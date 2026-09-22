@@ -1,0 +1,10 @@
+node_modules
+.env
+.vercel
+.next
+dist
+*.log
+.DS_Store
+dev.js
+testRotas.js
+prisma.config.ts

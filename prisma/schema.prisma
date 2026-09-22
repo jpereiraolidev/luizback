@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Water {
+  id        String   @id @default(cuid())
+  amount    Int
+  reason    String?
+  timestamp DateTime
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@map("water")
+}
+
+model Pee {
+  id        String   @id @default(cuid())
+  size      String
+  type      String
+  note      String?
+  timestamp DateTime
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@map("pee")
+}
+
+model Poop {
+  id          String   @id @default(cuid())
+  evacuated   Boolean
+  consistency String?
+  pain        Int      @default(0)
+  note        String?
+  timestamp   DateTime
+  date        DateTime @db.Date
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@map("poop")
+}
+
+model Behavior {
+  id        String   @id @default(cuid())
+  observed  String
+  rule      String?
+  action    String?
+  duration  Int?
+  result    String?
+  timestamp DateTime
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@map("behavior")
+}
