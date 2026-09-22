@@ -4,7 +4,7 @@
 // Uso: node testRotas.js
 // ============================================================
 
-const BASE = process.env.BASE || "http://localhost:3000";
+const BASE = process.env.BASE || "https://luizback.vercel.app";
 const TEST_DATE = "2026-09-22";
 
 // ------------------------------------------------------------

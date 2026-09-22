@@ -416,6 +416,30 @@ app.get("/summary", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ------------------------------------------------------------
+// COUPLE TASK — salvar (POST)
+// ------------------------------------------------------------
+app.post("/casal", async (req, res) => {
+  try {
+    const { text, owner, priority, due, note } = req.body;
+    if (!text || !text.trim())
+      return res.status(400).json({ error: "Campo obrigatório: text" });
+
+    const created = await prisma.coupleTask.create({
+      data: {
+        text: text.trim(),
+        owner: owner || "Qualquer um",
+        priority: priority || "media",
+        due: due || null,
+        note: note || null,
+        done: false,
+      },
+    });
+    res.status(201).json(created);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ------------------------------------------------------------
 // 404

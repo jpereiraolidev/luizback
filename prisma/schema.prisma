@@ -64,3 +64,19 @@ model Behavior {
   @@index([date])
   @@map("behavior")
 }
+model CoupleTask {
+  id        String   @id @default(cuid())
+  text      String
+  owner     String?
+  priority  String   @default("media")
+  due       String?
+  note      String?
+  done      Boolean  @default(false)
+  doneAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([done])
+  @@index([createdAt])
+  @@map("couple_task")
+}
