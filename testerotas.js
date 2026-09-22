@@ -1,6 +1,5 @@
 // ============================================================
-// testRotas.js — Testa todas as rotas da API local
-// Pré-requisito: dev.js rodando em outra aba (node dev.js)
+// testRotas.js — Testa todas as rotas da API (local ou prod)
 // Uso: node testRotas.js
 // ============================================================
 
@@ -8,7 +7,7 @@ const BASE = process.env.BASE || "https://luizback.vercel.app";
 const TEST_DATE = "2026-09-22";
 
 // ------------------------------------------------------------
-// Cores para o terminal
+// Cores
 // ------------------------------------------------------------
 const c = {
   reset: "\x1b[0m",
@@ -66,7 +65,7 @@ async function req(method, path, body) {
 }
 
 // ------------------------------------------------------------
-// Testes
+// HEALTH
 // ------------------------------------------------------------
 async function testHealth() {
   titulo("Health check");
@@ -76,10 +75,12 @@ async function testHealth() {
   return ok;
 }
 
+// ------------------------------------------------------------
+// WATER
+// ------------------------------------------------------------
 async function testWater() {
   titulo("WATER — CRUD");
 
-  // CREATE
   const novo = {
     amount: 150,
     reason: "Sede",
@@ -91,26 +92,22 @@ async function testWater() {
   mostrarResultado(`POST /water → ${post.status}`, criadoOk, post.data);
   const idCriado = post.data?.id;
 
-  // READ (por data)
   const get = await req("GET", `/water?date=${TEST_DATE}`);
   const getOk = get.status === 200 && Array.isArray(get.data) && get.data.length > 0;
   mostrarResultado(`GET /water?date=${TEST_DATE} → ${get.status} (${get.data?.length ?? 0} itens)`, getOk);
 
-  // READ (por id)
   if (idCriado) {
     const getOne = await req("GET", `/water?id=${idCriado}`);
     const getOneOk = getOne.status === 200 && getOne.data?.id === idCriado;
     mostrarResultado(`GET /water?id=... → ${getOne.status}`, getOneOk, getOne.data);
   }
 
-  // UPDATE
   if (idCriado) {
     const put = await req("PUT", `/water?id=${idCriado}`, { amount: 200, reason: "Calor" });
     const putOk = put.status === 200 && put.data?.amount === 200;
     mostrarResultado(`PUT /water?id=... → ${put.status}`, putOk, put.data);
   }
 
-  // ERROS esperados
   const semBody = await req("POST", "/water", { amount: 100 });
   const erroOk = semBody.status === 400;
   mostrarResultado(`POST /water sem campos → ${semBody.status} (esperado 400)`, erroOk, semBody.data);
@@ -118,6 +115,9 @@ async function testWater() {
   return idCriado;
 }
 
+// ------------------------------------------------------------
+// PEE
+// ------------------------------------------------------------
 async function testPee() {
   titulo("PEE — CRUD");
 
@@ -146,6 +146,9 @@ async function testPee() {
   return id;
 }
 
+// ------------------------------------------------------------
+// POOP
+// ------------------------------------------------------------
 async function testPoop() {
   titulo("POOP — CRUD");
 
@@ -175,6 +178,9 @@ async function testPoop() {
   return id;
 }
 
+// ------------------------------------------------------------
+// BEHAVIOR
+// ------------------------------------------------------------
 async function testBehavior() {
   titulo("BEHAVIOR — CRUD");
 
@@ -205,6 +211,9 @@ async function testBehavior() {
   return id;
 }
 
+// ------------------------------------------------------------
+// SUMMARY
+// ------------------------------------------------------------
 async function testSummary() {
   titulo("SUMMARY — agregado 7 dias");
 
@@ -231,12 +240,89 @@ async function testSummary() {
     weeklyPee: data?.weekly?.pee,
   });
 
-  // Erro esperado: sem ?date=
   const semDate = await req("GET", "/summary");
   mostrarResultado(`GET /summary (sem date) → ${semDate.status} (esperado 400)`,
     semDate.status === 400, semDate.data);
 }
 
+// ------------------------------------------------------------
+// CASAL (couple task)
+// ------------------------------------------------------------
+async function testCasal() {
+  titulo("CASAL — CoupleTask");
+
+  // CREATE
+  const nova = {
+    text: "Lavar a louça — teste automatizado",
+    owner: "Eu",
+    priority: "alta",
+    due: TEST_DATE,
+    note: "criada pelo testRotas.js",
+  };
+  const post = await req("POST", "/casal", nova);
+
+  const criadoOk =
+    post.status === 201 &&
+    post.data &&
+    post.data.id &&
+    post.data.text === nova.text &&
+    post.data.owner === "Eu" &&
+    post.data.priority === "alta" &&
+    post.data.done === false;
+
+  mostrarResultado(`POST /casal → ${post.status}`, criadoOk, post.data);
+  const idCriado = post.data?.id;
+
+  // CREATE — só com texto (defaults)
+  const soTexto = await req("POST", "/casal", { text: "Tarefa só com texto" });
+  const soTextoOk =
+    soTexto.status === 201 &&
+    soTexto.data?.owner === "Qualquer um" &&
+    soTexto.data?.priority === "media" &&
+    soTexto.data?.done === false;
+  mostrarResultado(`POST /casal (só text) → ${soTexto.status}`, soTextoOk, soTexto.data);
+  const idSoTexto = soTexto.data?.id;
+
+  // ERRO esperado: sem text
+  const semText = await req("POST", "/casal", { owner: "Eu" });
+  const erroOk = semText.status === 400;
+  mostrarResultado(`POST /casal sem text → ${semText.status} (esperado 400)`, erroOk, semText.data);
+
+  // ERRO esperado: text vazio
+  const vazio = await req("POST", "/casal", { text: "   " });
+  const vazioOk = vazio.status === 400;
+  mostrarResultado(`POST /casal text vazio → ${vazio.status} (esperado 400)`, vazioOk, vazio.data);
+
+  // ----------------------------------------------------------
+  // [FUTURO] quando você criar GET /casal:
+  //
+  // const get = await req("GET", "/casal");
+  // mostrarResultado(`GET /casal → ${get.status}`, get.status === 200 && Array.isArray(get.data), get.data);
+  //
+  // const getDone = await req("GET", "/casal?done=true");
+  // mostrarResultado(`GET /casal?done=true → ${getDone.status}`, getDone.status === 200);
+  //
+  // [FUTURO] quando você criar PUT /casal?id=:
+  //
+  // if (idCriado) {
+  //   const put = await req("PUT", `/casal?id=${idCriado}`, { done: true });
+  //   mostrarResultado(`PUT /casal?id=... → ${put.status}`, put.status === 200 && put.data?.done === true, put.data);
+  // }
+  //
+  // [FUTURO] quando você criar DELETE /casal?id=:
+  //
+  // if (idCriado) {
+  //   const del = await req("DELETE", `/casal?id=${idCriado}`);
+  //   mostrarResultado(`DELETE /casal?id=... → ${del.status}`, del.status === 200 && del.data?.deleted === true, del.data);
+  // }
+  // ----------------------------------------------------------
+
+  return { idCriado, idSoTexto };
+}
+
+// ------------------------------------------------------------
+// 404
+// ------------------------------------------------------------
 async function test404() {
   titulo("404 — rota inexistente");
   const { status, data } = await req("GET", "/rota-que-nao-existe");
@@ -244,6 +330,9 @@ async function test404() {
     status === 404, data);
 }
 
+// ------------------------------------------------------------
+// CLEANUP
+// ------------------------------------------------------------
 async function cleanup(ids) {
   titulo("Cleanup — apagando registros de teste");
   const apagados = [];
@@ -256,29 +345,27 @@ async function cleanup(ids) {
     if (ok) apagados.push(`${recurso}:${id}`);
   }
 
-  // Confirma que sumiram
   console.log("");
   console.log(`  ${c.dim}Registros apagados: ${apagados.length}${c.reset}`);
 }
 
 // ------------------------------------------------------------
-// Runner
+// RUNNER
 // ------------------------------------------------------------
 async function main() {
   console.log("");
   console.log(`${c.cyan}${c.bold}╔══════════════════════════════════════════════════╗${c.reset}`);
-  console.log(`${c.cyan}${c.bold}║  🧪 testRotas.js — testando API local            ║${c.reset}`);
+  console.log(`${c.cyan}${c.bold}║  🧪 testRotas.js — testando API                  ║${c.reset}`);
   console.log(`${c.cyan}${c.bold}║  ➜  ${BASE.padEnd(42)}║${c.reset}`);
   console.log(`${c.cyan}${c.bold}╚══════════════════════════════════════════════════╝${c.reset}`);
 
-  // Verifica se o servidor está no ar
   try {
     const ping = await fetch(BASE + "/");
     if (!ping.ok && ping.status !== 500) throw new Error("Servidor respondeu " + ping.status);
   } catch (e) {
     console.log("");
     console.log(`${c.red}❌ Não consegui conectar em ${BASE}${c.reset}`);
-    console.log(`${c.yellow}   Abre outro terminal e roda: ${c.bold}node dev.js${c.reset}`);
+    console.log(`${c.yellow}   Verifica se a API está no ar.${c.reset}`);
     console.log(`   ${c.dim}(${e.message})${c.reset}`);
     process.exit(1);
   }
@@ -292,9 +379,10 @@ async function main() {
     ids.poop = await testPoop();
     ids.behavior = await testBehavior();
     await testSummary();
+    await testCasal();
     await test404();
 
-    // Descomenta se quiser limpar os registros de teste:
+    // Descomenta se quiser limpar:
     // await cleanup(ids);
   } catch (e) {
     console.log("");
@@ -302,7 +390,6 @@ async function main() {
     console.error(e);
   }
 
-  // Resumo final
   console.log("");
   console.log(`${c.magenta}${c.bold}━━━ Resultado ━━━${c.reset}`);
   console.log(`  ${c.green}✔ Passou: ${passou}${c.reset}`);

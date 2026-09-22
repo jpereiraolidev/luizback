@@ -80,3 +80,11 @@ model CoupleTask {
   @@index([createdAt])
   @@map("couple_task")
 }
+model CoupleData {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   // JSON serializado
+  updatedAt DateTime @updatedAt
+
+  @@map("couple_data")
+}

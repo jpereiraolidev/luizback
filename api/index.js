@@ -440,6 +440,74 @@ app.post("/casal", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ------------------------------------------------------------
+// COUPLE DATA — armazenamento genérico (key/value JSON)
+// Serve pra: mimos, planos, metas, checkins
+// ------------------------------------------------------------
+const VALID_KEYS = ["mimos", "planos", "metas", "checkins", "tarefas"];
+
+// GET /casal/data?key=mimos → devolve o JSON salvo (ou [] se não existir)
+app.get("/casal/data", async (req, res) => {
+  try {
+    const { key } = req.query;
+    if (!key) return res.status(400).json({ error: "Query ?key= é obrigatória" });
+    if (!VALID_KEYS.includes(key))
+      return res.status(400).json({ error: `key inválida. Use uma de: ${VALID_KEYS.join(", ")}` });
+
+    const row = await prisma.coupleData.findUnique({ where: { key } });
+    if (!row) {
+      // Não existe ainda — devolve vazio pro front não quebrar
+      return res.json({ key, value: null });
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(row.value);
+    } catch {
+      parsed = null;
+    }
+
+    res.json({
+      key: row.key,
+      value: parsed,
+      updatedAt: row.updatedAt,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /casal/data?key=mimos → salva/atualiza o JSON inteiro daquela key
+// Body: { value: <qualquer JSON> }
+app.put("/casal/data", async (req, res) => {
+  try {
+    const { key } = req.query;
+    if (!key) return res.status(400).json({ error: "Query ?key= é obrigatória" });
+    if (!VALID_KEYS.includes(key))
+      return res.status(400).json({ error: `key inválida. Use uma de: ${VALID_KEYS.join(", ")}` });
+
+    const { value } = req.body;
+    if (value === undefined)
+      return res.status(400).json({ error: "Campo obrigatório no body: value" });
+
+    const serialized = JSON.stringify(value);
+
+    // upsert: cria se não existir, atualiza se existir
+    const saved = await prisma.coupleData.upsert({
+      where: { key },
+      create: { key, value: serialized },
+      update: { value: serialized },
+    });
+
+    res.json({
+      key: saved.key,
+      value: JSON.parse(saved.value),
+      updatedAt: saved.updatedAt,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ------------------------------------------------------------
 // 404
