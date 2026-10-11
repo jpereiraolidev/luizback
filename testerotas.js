@@ -6,7 +6,7 @@
 //   BASE=https://luizback.vercel.app node testRotas.js
 // ============================================================
 
-const BASE = process.env.BASE || "http://localhost:3000";
+const BASE = process.env.BASE || "https://luizback-y8qz.vercel.app/";
 
 // ------------------------------------------------------------
 // Cores

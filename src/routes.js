@@ -35,6 +35,30 @@ import {
 const router = Router();
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+// Valida e normaliza um avatar (string) ou null.
+// Aceita:
+//   - null ou "" → remove
+//   - "data:image/..." (base64)
+//   - "http(s)://..." (URL externa)
+// Limite: 700KB em base64 (≈ 500KB de imagem real)
+function normalizeAvatar(avatar) {
+  if (avatar === null || avatar === "") return null;
+  if (typeof avatar !== "string") throw badRequest("Avatar inválido");
+  if (avatar.length > 700_000) {
+    throw badRequest("Foto muito grande (máx ~500KB)");
+  }
+  const isDataUrl = avatar.startsWith("data:image/");
+  const isHttpUrl = /^https?:\/\//.test(avatar);
+  if (!isDataUrl && !isHttpUrl) {
+    throw badRequest("Formato de avatar inválido");
+  }
+  return avatar;
+}
+
+// ============================================================
 // AUTH
 // ============================================================
 
@@ -47,7 +71,9 @@ router.post(
     if (!isValidPassword(password)) throw badRequest("Senha deve ter >= 6 caracteres");
     if (!name?.trim()) throw badRequest("Nome é obrigatório");
 
-    const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+    const existing = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+    });
     if (existing) throw conflict("Email já cadastrado");
 
     const user = await prisma.user.create({
@@ -92,13 +118,49 @@ router.get(
       ? await prisma.couple.findUnique({
           where: { id: req.user.coupleId },
           include: {
-            members: { select: { id: true, name: true, email: true } },
-            dependents: { select: { id: true, name: true, birthDate: true, avatar: true } },
+            members: {
+              select: { id: true, name: true, email: true, avatar: true },
+            },
+            dependents: {
+              select: { id: true, name: true, birthDate: true, avatar: true },
+            },
           },
         })
       : null;
 
     res.json({ user: publicUser(req.user), couple });
+  })
+);
+
+// PUT /auth/me  → atualizar nome e/ou avatar
+router.put(
+  "/auth/me",
+  authRequired,
+  asyncHandler(async (req, res) => {
+    const { name, avatar } = req.body || {};
+    const data = {};
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed) throw badRequest("Nome não pode ser vazio");
+      if (trimmed.length > 60) throw badRequest("Nome muito longo (máx 60)");
+      data.name = trimmed;
+    }
+
+    if (avatar !== undefined) {
+      data.avatar = normalizeAvatar(avatar);
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw badRequest("Nada pra atualizar");
+    }
+
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data,
+    });
+
+    res.json({ user: publicUser(user) });
   })
 );
 
@@ -118,7 +180,9 @@ router.post(
         ownerId: req.user.id,
         members: { connect: { id: req.user.id } },
       },
-      include: { members: { select: { id: true, name: true, email: true } } },
+      include: {
+        members: { select: { id: true, name: true, email: true, avatar: true } },
+      },
     });
 
     res.status(HTTP.CREATED).json({ couple });
@@ -134,7 +198,7 @@ router.get(
     const couple = await prisma.couple.findUnique({
       where: { id: req.user.coupleId },
       include: {
-        members: { select: { id: true, name: true, email: true } },
+        members: { select: { id: true, name: true, email: true, avatar: true } },
         dependents: true,
       },
     });
@@ -177,7 +241,7 @@ router.post(
         payload: { coupleId: req.user.coupleId },
       },
       include: {
-        from: { select: { id: true, name: true, email: true } },
+        from: { select: { id: true, name: true, email: true, avatar: true } },
       },
     });
 
@@ -243,7 +307,7 @@ router.get(
       where,
       orderBy: { createdAt: "desc" },
       include: {
-        from: { select: { id: true, name: true, email: true } },
+        from: { select: { id: true, name: true, email: true, avatar: true } },
       },
       take: 50,
     });
@@ -353,11 +417,16 @@ router.post(
       if (!birth) throw badRequest("birthDate deve ser YYYY-MM-DD");
     }
 
+    let av = null;
+    if (avatar !== undefined && avatar !== null) {
+      av = normalizeAvatar(avatar);
+    }
+
     const dep = await prisma.dependent.create({
       data: {
         name: name.trim(),
         birthDate: birth,
-        avatar: avatar || null,
+        avatar: av,
         coupleId: req.user.coupleId,
       },
     });
@@ -385,12 +454,18 @@ router.put(
     await assertDependentBelongsToCouple(req.params.id, req.user.coupleId);
     const { name, birthDate, avatar } = req.body || {};
     const data = {};
+
     if (name !== undefined) data.name = String(name).trim();
-    if (avatar !== undefined) data.avatar = avatar;
+
+    if (avatar !== undefined) {
+      data.avatar = normalizeAvatar(avatar);
+    }
+
     if (birthDate !== undefined) {
       data.birthDate = birthDate ? parseDateOnly(birthDate) : null;
       if (birthDate && !data.birthDate) throw badRequest("birthDate inválida");
     }
+
     const dep = await prisma.dependent.update({ where: { id: req.params.id }, data });
     res.json(dep);
   })
@@ -409,7 +484,7 @@ router.delete(
 );
 
 // ============================================================
-// REGISTROS DO DEPENDENTE — factory pra evitar repetição
+// REGISTROS DO DEPENDENTE — factory
 // ============================================================
 function makeRegistroRoutes(path, modelName, buildCreate, buildUpdate) {
   // CREATE
@@ -633,20 +708,24 @@ router.get(
     weekEnd.setUTCHours(23, 59, 59, 999);
 
     const weekWhere = { dependentId, date: { gte: weekStart, lte: weekEnd } };
-    const [weekWater, weekPee] = await Promise.all([
+    const [weekWater, weekPee, weekPoop] = await Promise.all([
       prisma.water.findMany({ where: weekWhere }),
       prisma.pee.findMany({ where: weekWhere }),
+      prisma.poop.findMany({ where: weekWhere }),
     ]);
 
+    const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
     const weeklyWater = days.map((d) => {
-      const key = d.toISOString().slice(0, 10);
-      return weekWater
-        .filter((w) => new Date(w.date).toISOString().slice(0, 10) === key)
-        .reduce((s, w) => s + w.amount, 0);
+      const key = dayKey(d);
+      return weekWater.filter((w) => dayKey(w.date) === key).reduce((s, w) => s + w.amount, 0);
     });
     const weeklyPee = days.map((d) => {
-      const key = d.toISOString().slice(0, 10);
-      return weekPee.filter((p) => new Date(p.date).toISOString().slice(0, 10) === key).length;
+      const key = dayKey(d);
+      return weekPee.filter((p) => dayKey(p.date) === key).length;
+    });
+    const weeklyPoop = days.map((d) => {
+      const key = dayKey(d);
+      return weekPoop.filter((p) => dayKey(p.date) === key).length;
     });
 
     res.json({
@@ -654,7 +733,11 @@ router.get(
       pee,
       poop,
       behavior,
-      weekly: { water: weeklyWater, pee: weeklyPee },
+      weekly: {
+        water: weeklyWater,
+        pee: weeklyPee,
+        poop: weeklyPoop,
+      },
     });
   })
 );

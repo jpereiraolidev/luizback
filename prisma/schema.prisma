@@ -16,12 +16,13 @@ model User {
   email        String   @unique
   passwordHash String
   name         String
+  avatar       String?  // ← NOVO: data URL base64 (image/jpeg) ou URL http(s)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   // relação com o casal (1 casal por user)
-  coupleId     String?
-  couple       Couple?  @relation(fields: [coupleId], references: [id])
+  coupleId String?
+  couple   Couple? @relation(fields: [coupleId], references: [id])
 
   // notificações enviadas/recebidas
   notifsSent     Notification[] @relation("NotifFrom")
@@ -34,15 +35,15 @@ model User {
 }
 
 model Couple {
-  id         String   @id @default(cuid())
-  color      String   @default("pink")
-  theme      String   @default("dark")
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  color     String   @default("pink")
+  theme     String   @default("dark")
+  createdAt DateTime @default(now())
 
-  ownerId    String
-  owner      User     @relation("CoupleOwner", fields: [ownerId], references: [id])
+  ownerId String
+  owner   User   @relation("CoupleOwner", fields: [ownerId], references: [id])
 
-  members    User[]
+  members User[]
 
   dependents Dependent[]
   tasks      CoupleTask[]
@@ -55,17 +56,17 @@ model Dependent {
   id        String    @id @default(cuid())
   name      String
   birthDate DateTime? @db.Date
-  avatar    String?
+  avatar    String?   // ← data URL base64 ou URL http(s)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  coupleId  String
-  couple    Couple    @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
 
-  water     Water[]
-  pee       Pee[]
-  poop      Poop[]
-  behavior  Behavior[]
+  water    Water[]
+  pee      Pee[]
+  poop     Poop[]
+  behavior Behavior[]
 
   @@index([coupleId])
   @@map("dependents")
@@ -77,7 +78,6 @@ model Dependent {
 
 enum NotificationType {
   COUPLE_INVITE
-  // futuro: COUPLE_LEFT, DEPENDENT_ADDED, etc
 }
 
 enum NotificationStatus {
@@ -88,18 +88,18 @@ enum NotificationStatus {
 }
 
 model Notification {
-  id        String             @id @default(cuid())
-  type      NotificationType
-  status    NotificationStatus @default(PENDING)
+  id     String             @id @default(cuid())
+  type   NotificationType
+  status NotificationStatus @default(PENDING)
 
-  fromId    String
-  from      User               @relation("NotifFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  fromId String
+  from   User   @relation("NotifFrom", fields: [fromId], references: [id], onDelete: Cascade)
 
-  toId      String
-  to        User               @relation("NotifTo",   fields: [toId],   references: [id], onDelete: Cascade)
+  toId String
+  to   User @relation("NotifTo", fields: [toId], references: [id], onDelete: Cascade)
 
-  // payload livre (ex: { coupleId, inviteCode })
-  payload   Json?
+  // payload livre (ex: { coupleId })
+  payload Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -114,74 +114,74 @@ model Notification {
 // ============================================================
 
 model Water {
-  id          String    @id @default(cuid())
-  amount      Int
-  reason      String?
-  timestamp   DateTime
-  date        DateTime  @db.Date
+  id        String   @id @default(cuid())
+  amount    Int
+  reason    String?
+  timestamp DateTime
+  date      DateTime @db.Date
 
   dependentId String
   dependent   Dependent @relation(fields: [dependentId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([dependentId, date])
   @@map("water")
 }
 
 model Pee {
-  id          String    @id @default(cuid())
-  size        String
-  type        String
-  note        String?
-  timestamp   DateTime
-  date        DateTime  @db.Date
+  id        String   @id @default(cuid())
+  size      String
+  type      String
+  note      String?
+  timestamp DateTime
+  date      DateTime @db.Date
 
   dependentId String
   dependent   Dependent @relation(fields: [dependentId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([dependentId, date])
   @@map("pee")
 }
 
 model Poop {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   evacuated   Boolean
   consistency String?
-  pain        Int       @default(0)
+  pain        Int      @default(0)
   note        String?
   timestamp   DateTime
-  date        DateTime  @db.Date
+  date        DateTime @db.Date
 
   dependentId String
   dependent   Dependent @relation(fields: [dependentId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([dependentId, date])
   @@map("poop")
 }
 
 model Behavior {
-  id          String    @id @default(cuid())
-  observed    String
-  rule        String?
-  action      String?
-  duration    Int?
-  result      String?
-  timestamp   DateTime
-  date        DateTime  @db.Date
+  id        String   @id @default(cuid())
+  observed  String
+  rule      String?
+  action    String?
+  duration  Int?
+  result    String?
+  timestamp DateTime
+  date      DateTime @db.Date
 
   dependentId String
   dependent   Dependent @relation(fields: [dependentId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([dependentId, date])
   @@map("behavior")
@@ -192,31 +192,31 @@ model Behavior {
 // ============================================================
 
 model CoupleTask {
-  id        String    @id @default(cuid())
-  text      String
-  owner     String?
-  priority  String    @default("media")
-  due       String?
-  note      String?
-  done      Boolean   @default(false)
-  doneAt    DateTime?
+  id       String    @id @default(cuid())
+  text     String
+  owner    String?
+  priority String    @default("media")
+  due      String?
+  note     String?
+  done     Boolean   @default(false)
+  doneAt   DateTime?
 
-  coupleId  String
-  couple    Couple    @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([coupleId, done])
   @@map("couple_task")
 }
 
 model CoupleData {
-  id        String   @id @default(cuid())
-  key       String
-  value     String   // JSON serializado
-  coupleId  String
-  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  key      String
+  value    String // JSON serializado
+  coupleId String
+  couple   Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
 
   updatedAt DateTime @updatedAt
 

@@ -57,6 +57,7 @@ export function publicUser(user) {
     id: user.id,
     email: user.email,
     name: user.name,
+    avatar: user.avatar ?? null,   // ← NOVO
     coupleId: user.coupleId ?? null,
     createdAt: user.createdAt,
   };
