@@ -9,22 +9,16 @@
 //   - Erros não tratados (uncaughtException, unhandledRejection)
 //   - Amostragem configurável para não explodir custo
 //
+// ✅ NOVO (v2):
+//   - keepAlive(): ping ao Postgres com timeout curto, usado
+//     por cron externo (cron-job.org, UptimeRobot) para impedir
+//     que o banco serverless free hiberne.
+//
 // Modos de saída (env LOG_MODE):
 //   stdout   → console.log estruturado (Vercel captura; sem persistência)
 //   file     → arquivo rotativo em ./logs/ (local/staging)
 //   db       → tabela AuditLog no Postgres
 //   multi    → stdout + file + db em paralelo
-//
-// Env:
-//   LOG_LEVEL         debug|info|warn|error   (default info)
-//   LOG_MODE          stdout|file|db|multi    (default stdout)
-//   LOG_DIR           diretório p/ file mode  (default ./logs)
-//   LOG_MAX_BODY      bytes máximos do body   (default 4096)
-//   LOG_SAMPLE_RATE   0..1                    (default 1.0 = tudo)
-//   LOG_SLOW_MS       limiar p/ "lenta"       (default 1000)
-//   LOG_SKIP_PATHS    CSV de paths ignorados  (default /favicon.ico)
-//   LOG_REDACT        CSV de campos redigidos (default password,token,...)
-//   LOG_PRISMA_SLOW_MS limiar p/ query lenta  (default 500)
 // ============================================================
 
 import fs from "node:fs";
@@ -41,19 +35,16 @@ const SAMPLE_RATE = Math.max(0, Math.min(1, Number(process.env.LOG_SAMPLE_RATE |
 const SLOW_MS = Number(process.env.LOG_SLOW_MS || 1000);
 const PRISMA_SLOW_MS = Number(process.env.LOG_PRISMA_SLOW_MS || 500);
 const SKIP_PATHS = new Set(
-  (process.env.LOG_SKIP_PATHS || "/favicon.ico")
+  (process.env.LOG_SKIP_PATHS || "/favicon.ico,/__health/db")
     .split(",").map(s => s.trim()).filter(Boolean)
 );
 const REDACT_KEYS = new Set(
   (process.env.LOG_REDACT ||
-    "password,passwordHash,token,authorization,secret,apiKey,database_url,diag_token,cron_secret")
+    "password,passwordHash,token,authorization,secret,apiKey,database_url,diag_token,cron_secret,keepalive_token")
     .split(",").map(s => s.trim().toLowerCase()).filter(Boolean)
 );
 
 // ---------- IDENTIDADE DA INSTÂNCIA ----------
-// Persistente durante o ciclo de vida do processo (container quente).
-// Muda a cada cold start — é exatamente isso que queremos detectar
-// para resolver a hipótese H1 (fragmentação do PrismaClient).
 if (!globalThis.__promax_logger) {
   globalThis.__promax_logger = {
     instanceId: crypto.randomUUID(),
@@ -79,7 +70,6 @@ if (MODE === "file" || MODE === "multi") {
 }
 
 // ---------- DB SINK (lazy) ----------
-// Importado dinamicamente para não criar dependência circular com config.js
 let dbSink = null;
 async function initDbSink() {
   if (dbSink !== null) return dbSink;
@@ -114,7 +104,6 @@ async function writeDb(entry) {
       },
     });
   } catch (e) {
-    // Falha no sink não pode derrubar a request.
     console.error("[registerlogs] db sink falhou:", e.message);
   }
 }
@@ -153,7 +142,6 @@ function emit(entry) {
     ...entry,
   };
 
-  // stdout
   if (MODE === "stdout" || MODE === "multi") {
     const line = JSON.stringify(full);
     if (entry.level === "error") console.error(line);
@@ -161,12 +149,10 @@ function emit(entry) {
     else console.log(line);
   }
 
-  // file
   if (fileStream) {
     try { fileStream.write(JSON.stringify(full) + "\n"); } catch {}
   }
 
-  // db (fire and forget)
   if (MODE === "db" || MODE === "multi") {
     writeDb(full).catch(() => {});
   }
@@ -182,19 +168,13 @@ const log = {
 // ============================================================
 // MIDDLEWARE — requestLogger
 // ============================================================
-// Deve ser registrado ANTES de express.json (para capturar headers,
-// IP e content-length mesmo quando o body for inválido).
 export function requestLogger(req, res, next) {
-  // Skip paths configurados
   if (SKIP_PATHS.has(req.path)) return next();
-
-  // Amostragem (0..1)
   if (SAMPLE_RATE < 1 && Math.random() > SAMPLE_RATE) return next();
 
   const requestId = crypto.randomUUID();
   const t0 = process.hrtime.bigint();
 
-  // Injeta utilitários por request
   req.id = requestId;
   req.log = {
     debug: (evt, extra) => log.debug(evt, { requestId, ...extra }),
@@ -203,7 +183,6 @@ export function requestLogger(req, res, next) {
     error: (evt, extra) => log.error(evt, { requestId, ...extra }),
   };
 
-  // Captura o body da resposta sem quebrar o fluxo
   const originalJson = res.json.bind(res);
   const originalSend = res.send.bind(res);
   let responseBody = null;
@@ -211,7 +190,6 @@ export function requestLogger(req, res, next) {
   res.json = (body) => { responseBody = body; return originalJson(body); };
   res.send = (body) => { if (responseBody == null) responseBody = body; return originalSend(body); };
 
-  // ===== ENTRADA =====
   log.info("request.in", {
     requestId,
     method: req.method,
@@ -224,7 +202,6 @@ export function requestLogger(req, res, next) {
     contentLength: Number(req.headers["content-length"] || 0),
   });
 
-  // ===== SAÍDA =====
   res.on("finish", () => {
     INSTANCE.requestCount++;
     const durationMs = Number(process.hrtime.bigint() - t0) / 1e6;
@@ -252,7 +229,6 @@ export function requestLogger(req, res, next) {
     });
   });
 
-  // ===== ABORT / SOCKET CLOSED =====
   res.on("close", () => {
     if (!res.writableEnded) {
       const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1e6);
@@ -266,9 +242,6 @@ export function requestLogger(req, res, next) {
 // ============================================================
 // INSTRUMENTAÇÃO DO PRISMA
 // ============================================================
-// Chame UMA VEZ após criar o PrismaClient:
-//   import { instrumentPrisma } from "./registerlogs.js";
-//   instrumentPrisma(prisma);
 export function instrumentPrisma(prisma) {
   INSTANCE.prismaInitAt = new Date().toISOString();
 
@@ -277,10 +250,9 @@ export function instrumentPrisma(prisma) {
     nodeVersion: process.version,
     env: process.env.NODE_ENV,
     region: process.env.VERCEL_REGION || null,
-    hasPooler: /pooler|pgbouncer/i.test(process.env.DATABASE_URL || ""),
+    hasPooler: /pooled|pooler|pgbouncer/i.test(process.env.DATABASE_URL || ""),
   });
 
-  // Eventos nativos do Prisma (exigem log: [{emit:"event",...}] no client)
   try {
     prisma.$on("error", (e) => {
       log.error("prisma.error", {
@@ -293,10 +265,9 @@ export function instrumentPrisma(prisma) {
       log.warn("prisma.warn", { message: e.message?.slice(0, 300) });
     });
   } catch {
-    // Cliente foi criado sem log:{emit:"event"} — não é fatal
+    // Cliente sem log:{emit:"event"}
   }
 
-  // Wrapper para medir duração de queries comuns
   const wrap = (model, method) => {
     const original = prisma[model]?.[method];
     if (typeof original !== "function") return;
@@ -364,6 +335,46 @@ export function installGlobalHooks() {
   process.on("exit", (code) => {
     log.info("process.exit", { code, uptime: Math.round(process.uptime()) });
   });
+}
+
+// ============================================================
+// KEEP-ALIVE DO BANCO
+// ============================================================
+// ✅ NOVO — ping ao Postgres com timeout de 5s.
+// Usado por:
+//   - cron externo (cron-job.org, UptimeRobot)
+//   - rota GET /__health/db
+// Impede que bancos serverless free (Neon, Supabase, Prisma Postgres)
+// hibernem após minutos de inatividade.
+export async function keepAlive() {
+  const t0 = Date.now();
+  try {
+    const mod = await import("./config.js");
+    const prisma = mod.prisma;
+
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("KEEPALIVE_TIMEOUT")), 5000)
+      ),
+    ]);
+
+    return {
+      ok: true,
+      latencyMs: Date.now() - t0,
+      instanceId: INSTANCE.instanceId,
+      ts: new Date().toISOString(),
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e.code || e.name,
+      message: String(e.message || e).slice(0, 200),
+      latencyMs: Date.now() - t0,
+      instanceId: INSTANCE.instanceId,
+      ts: new Date().toISOString(),
+    };
+  }
 }
 
 // ============================================================

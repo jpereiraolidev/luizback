@@ -12,6 +12,7 @@
 //   /custom-records     (CRUD registros custom)
 //   /couple/invite-link (link rápido com expiração)
 //   /__diag/instance    (diagnóstico protegido)
+//   /__health/db        (keep-alive do banco — cron-job.org)
 //   /__cron/prune-logs  (retenção de audit_logs)
 //
 // 🔴 MODIFICADAS:
@@ -49,14 +50,12 @@ import {
   notFound,
   conflict,
   assertDependentBelongsToCouple,
-  assertRecordBelongsToCouple,
   parseDateOnly,
   parseTimestampRequired,
   dayRange,
   normalizeAvatar,
-  activeOnly,
 } from "./middleware.js";
-import { getInstanceInfo, log } from "./registerlogs.js";
+import { getInstanceInfo, log, keepAlive } from "./registerlogs.js";
 
 const router = Router();
 
@@ -65,7 +64,6 @@ const router = Router();
 // ============================================================
 
 function generateInviteToken() {
-  // URL-safe, ~22 chars, 128 bits de entropia
   return crypto.randomBytes(INVITE_LINK.TOKEN_BYTES).toString("base64url");
 }
 
@@ -180,7 +178,6 @@ router.put("/auth/me", authRequired, asyncHandler(async (req, res) => {
 router.post("/couple", authRequired, asyncHandler(async (req, res) => {
   if (req.user.coupleId) throw conflict("Você já está em um casal");
 
-  // 🔴 Usa transação para garantir que User.coupleId e Couple.ownerId fiquem consistentes
   const couple = await prisma.$transaction(async (tx) => {
     const c = await tx.couple.create({
       data: {
@@ -191,7 +188,6 @@ router.post("/couple", authRequired, asyncHandler(async (req, res) => {
         members: { select: { id: true, name: true, email: true, avatar: true } },
       },
     });
-    // Garantia explícita (o `connect` já faz, mas confirmamos)
     await tx.user.update({
       where: { id: req.user.id },
       data: { coupleId: c.id },
@@ -277,10 +273,9 @@ router.delete("/couple/leave", authRequired, requireCouple, asyncHandler(async (
 }));
 
 // ============================================================
-// ✅ NOVO — CONVITE POR LINK RÁPIDO
+// CONVITE POR LINK RÁPIDO
 // ============================================================
 
-// POST /couple/invite-link  { expiresInHours?, maxUses? }
 router.post("/couple/invite-link", authRequired, requireCouple, asyncHandler(async (req, res) => {
   const { expiresInHours, maxUses } = req.body || {};
 
@@ -293,7 +288,6 @@ router.post("/couple/invite-link", authRequired, requireCouple, asyncHandler(asy
     throw badRequest(`maxUses deve ser entre 1 e ${INVITE_LINK.MAX_MAX_USES}`);
   }
 
-  // Revoga o link ativo anterior (só 1 por vez)
   await prisma.inviteLink.updateMany({
     where: { coupleId: req.user.coupleId, revokedAt: null },
     data: { revokedAt: new Date() },
@@ -329,7 +323,6 @@ router.post("/couple/invite-link", authRequired, requireCouple, asyncHandler(asy
   });
 }));
 
-// GET /couple/invite-link
 router.get("/couple/invite-link", authRequired, requireCouple, asyncHandler(async (req, res) => {
   const link = await prisma.inviteLink.findFirst({
     where: { coupleId: req.user.coupleId, revokedAt: null },
@@ -354,7 +347,6 @@ router.get("/couple/invite-link", authRequired, requireCouple, asyncHandler(asyn
   });
 }));
 
-// DELETE /couple/invite-link
 router.delete("/couple/invite-link", authRequired, requireCouple, asyncHandler(async (req, res) => {
   const result = await prisma.inviteLink.updateMany({
     where: { coupleId: req.user.coupleId, revokedAt: null },
@@ -364,7 +356,6 @@ router.delete("/couple/invite-link", authRequired, requireCouple, asyncHandler(a
   res.json({ revoked: true, count: result.count });
 }));
 
-// GET /couple/invite-link/:token/preview  (público)
 router.get("/couple/invite-link/:token/preview", asyncHandler(async (req, res) => {
   const { token } = req.params;
   const link = await prisma.inviteLink.findUnique({
@@ -387,13 +378,11 @@ router.get("/couple/invite-link/:token/preview", asyncHandler(async (req, res) =
   });
 }));
 
-// POST /couple/invite-link/:token/accept
 router.post("/couple/invite-link/:token/accept", authRequired, asyncHandler(async (req, res) => {
   const { token } = req.params;
 
   if (req.user.coupleId) throw conflict("Você já está em um casal");
 
-  // 🔴 Atômico: só passa se ainda válido
   const result = await prisma.$transaction(async (tx) => {
     const link = await tx.inviteLink.findUnique({ where: { token } });
     if (!link) throw notFound("Convite não encontrado");
@@ -401,7 +390,6 @@ router.post("/couple/invite-link/:token/accept", authRequired, asyncHandler(asyn
     if (link.expiresAt <= new Date()) throw badRequest("Convite expirado");
     if (link.useCount >= link.maxUses) throw conflict("Convite já utilizado");
 
-    // Reserva um "uso" atomicamente
     const claimed = await tx.inviteLink.updateMany({
       where: {
         id: link.id,
@@ -417,7 +405,6 @@ router.post("/couple/invite-link/:token/accept", authRequired, asyncHandler(asyn
     });
     if (claimed.count === 0) throw conflict("Convite já utilizado");
 
-    // Re-lê o user para garantir que ainda está sem casal
     const fresh = await tx.user.findUnique({ where: { id: req.user.id } });
     if (fresh.coupleId) throw conflict("Você já está em um casal");
 
@@ -459,7 +446,6 @@ router.get("/notifications", authRequired, asyncHandler(async (req, res) => {
   res.json(list);
 }));
 
-// 🔴 CORREÇÃO H3 — accept atômico
 router.post("/notifications/:id/accept", authRequired, asyncHandler(async (req, res) => {
   const notif = await prisma.notification.findUnique({ where: { id: req.params.id } });
   if (!notif) throw notFound("Notificação não encontrada");
@@ -472,14 +458,12 @@ router.post("/notifications/:id/accept", authRequired, asyncHandler(async (req, 
   if (!coupleId) throw badRequest("Convite sem coupleId");
 
   const result = await prisma.$transaction(async (tx) => {
-    // Só marca como ACCEPTED se ainda estiver PENDING — atômico
     const updated = await tx.notification.updateMany({
       where: { id: notif.id, status: NOTIF_STATUS.PENDING },
       data: { status: NOTIF_STATUS.ACCEPTED },
     });
     if (updated.count === 0) throw conflict("Notificação não está mais pendente");
 
-    // Re-lê o user dentro da transação
     const fresh = await tx.user.findUnique({ where: { id: req.user.id } });
     if (fresh.coupleId) throw conflict("Você já está em um casal");
 
@@ -593,11 +577,10 @@ router.delete("/dependent/:id", authRequired, requireCouple, asyncHandler(async 
 }));
 
 // ============================================================
-// REGISTROS — factory (com soft delete e parseTimestampRequired)
+// REGISTROS — factory
 // ============================================================
 
 function makeRegistroRoutes(path, modelName, buildCreate, buildUpdate) {
-  // CREATE
   router.post(path, authRequired, requireCouple, asyncHandler(async (req, res) => {
     const dependentId = req.body?.dependentId;
     await assertDependentBelongsToCouple(dependentId, req.user.coupleId);
@@ -606,7 +589,6 @@ function makeRegistroRoutes(path, modelName, buildCreate, buildUpdate) {
     res.status(HTTP.CREATED).json(created);
   }));
 
-  // LIST — por padrão só ativos; aceita ?status= para incluir outros
   router.get(path, authRequired, requireCouple, asyncHandler(async (req, res) => {
     const { dependentId, date, status } = req.query;
     await assertDependentBelongsToCouple(dependentId, req.user.coupleId);
@@ -634,7 +616,6 @@ function makeRegistroRoutes(path, modelName, buildCreate, buildUpdate) {
     res.json(items);
   }));
 
-  // UPDATE
   router.put(path, authRequired, requireCouple, asyncHandler(async (req, res) => {
     const { id } = req.query;
     if (!id) throw badRequest("id é obrigatório");
@@ -648,7 +629,6 @@ function makeRegistroRoutes(path, modelName, buildCreate, buildUpdate) {
     res.json(updated);
   }));
 
-  // DELETE — soft delete (status = archived)
   router.delete(path, authRequired, requireCouple, asyncHandler(async (req, res) => {
     const { id } = req.query;
     if (!id) throw badRequest("id é obrigatório");
@@ -665,7 +645,7 @@ function makeRegistroRoutes(path, modelName, buildCreate, buildUpdate) {
   }));
 }
 
-// ---------- WATER (mantido como legado) ----------
+// WATER (legado)
 makeRegistroRoutes(
   "/water",
   "water",
@@ -673,7 +653,6 @@ makeRegistroRoutes(
     requireFields(body, ["amount", "timestamp", "date"]);
     const d = parseDateOnly(body.date);
     if (!d) throw badRequest("date inválida");
-    // 🔴 CORREÇÃO H4
     const ts = parseTimestampRequired(body.timestamp, "timestamp");
     if (typeof body.amount !== "number" || body.amount <= 0)
       throw badRequest("amount deve ser número positivo");
@@ -694,7 +673,7 @@ makeRegistroRoutes(
   }
 );
 
-// ---------- PEE ----------
+// PEE
 makeRegistroRoutes(
   "/pee",
   "pee",
@@ -722,7 +701,7 @@ makeRegistroRoutes(
   }
 );
 
-// ---------- POOP ----------
+// POOP
 makeRegistroRoutes(
   "/poop",
   "poop",
@@ -751,7 +730,7 @@ makeRegistroRoutes(
   }
 );
 
-// ---------- BEHAVIOR ----------
+// BEHAVIOR
 makeRegistroRoutes(
   "/behavior",
   "behavior",
@@ -781,10 +760,7 @@ makeRegistroRoutes(
   }
 );
 
-// ============================================================
-// ✅ NOVO — SLEEP (registro principal)
-// ============================================================
-
+// SLEEP
 makeRegistroRoutes(
   "/sleep",
   "sleep",
@@ -830,7 +806,7 @@ makeRegistroRoutes(
 );
 
 // ============================================================
-// ✅ NOVO — RECORD TYPES (tipos custom do casal)
+// RECORD TYPES
 // ============================================================
 
 router.post("/record-types", authRequired, requireCouple, asyncHandler(async (req, res) => {
@@ -895,7 +871,7 @@ router.delete("/record-types/:id", authRequired, requireCouple, asyncHandler(asy
 }));
 
 // ============================================================
-// ✅ NOVO — CUSTOM RECORDS
+// CUSTOM RECORDS
 // ============================================================
 
 router.post("/custom-records", authRequired, requireCouple, asyncHandler(async (req, res) => {
@@ -1003,11 +979,7 @@ router.delete("/custom-records", authRequired, requireCouple, asyncHandler(async
 }));
 
 // ============================================================
-// SUMMARY (atualizado)
-// ============================================================
-// 🔴 Só inclui registros com status=active.
-// ✅ Inclui sleep e custom.
-// Mantém `water` na resposta para compatibilidade (sempre vazio se não houver).
+// SUMMARY
 // ============================================================
 
 router.get("/summary", authRequired, requireCouple, asyncHandler(async (req, res) => {
@@ -1031,7 +1003,6 @@ router.get("/summary", authRequired, requireCouple, asyncHandler(async (req, res
     prisma.behavior.findMany({ where: dayWhere, orderBy: { timestamp: "desc" } }),
   ]);
 
-  // Custom: agrupa por slug do tipo
   const customRaw = await prisma.customRecord.findMany({
     where: dayWhere,
     orderBy: { timestamp: "desc" },
@@ -1043,7 +1014,6 @@ router.get("/summary", authRequired, requireCouple, asyncHandler(async (req, res
     (custom[slug] ||= []).push(cr);
   }
 
-  // Weekly: últimos 7 dias incluindo `date`
   const base = parseDateOnly(date);
   const days = [];
   for (let i = 6; i >= 0; i--) {
@@ -1087,18 +1057,10 @@ router.get("/summary", authRequired, requireCouple, asyncHandler(async (req, res
   });
 
   res.json({
-    // mantido para compatibilidade
     water: [],
-    // novo
-    sleep,
-    pee,
-    poop,
-    behavior,
-    custom,
+    sleep, pee, poop, behavior, custom,
     weekly: {
-      // mantido vazio para compatibilidade
       water: [0, 0, 0, 0, 0, 0, 0],
-      // novo
       sleepMin: weeklySleepMin,
       sleepCount: weeklySleepCount,
       pee: weeklyPee,
@@ -1206,7 +1168,7 @@ router.put("/casal/data", authRequired, requireCouple, asyncHandler(async (req, 
 }));
 
 // ============================================================
-// DIAGNÓSTICO (protegido por DIAG_TOKEN)
+// DIAGNÓSTICO
 // ============================================================
 
 router.get("/__diag/instance", (req, res) => {
@@ -1218,7 +1180,40 @@ router.get("/__diag/instance", (req, res) => {
 });
 
 // ============================================================
-// CRON — PRUNE DE LOGS (protegido por CRON_SECRET)
+// ✅ NOVO — KEEP-ALIVE DO BANCO
+// ============================================================
+// Uso: cron externo (cron-job.org, UptimeRobot) OU Vercel cron.
+// Aceita o token de 3 formas:
+//   - header x-keepalive-token
+//   - header Authorization: Bearer <token>
+//   - query ?token=<token>
+//
+// Sempre retorna 200 — o corpo diz se o banco está OK.
+// Isso evita que serviços de uptime disparem alertas falsos
+// quando o banco só está hibernando.
+router.get("/__health/db", asyncHandler(async (req, res) => {
+  const expected = process.env.KEEPALIVE_TOKEN;
+  if (expected) {
+    const provided =
+      req.headers["x-keepalive-token"] ||
+      (req.headers["authorization"] || "").replace(/^Bearer\s+/i, "") ||
+      req.query.token;
+    if (provided !== expected) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+  }
+
+  const result = await keepAlive();
+  log[result.ok ? "info" : "error"]("keepalive.ping", {
+    requestId: req.id,
+    ...result,
+  });
+
+  res.json(result);
+}));
+
+// ============================================================
+// CRON — PRUNE DE LOGS
 // ============================================================
 
 router.get("/__cron/prune-logs", asyncHandler(async (req, res) => {
@@ -1242,21 +1237,6 @@ router.get("/__cron/prune-logs", asyncHandler(async (req, res) => {
 // ============================================================
 // HEALTH
 // ============================================================
-router.get("/__health/db", asyncHandler(async (req, res) => {
-  const expected = process.env.KEEPALIVE_TOKEN;
-  if (expected) {
-    const provided =
-      req.headers["x-keepalive-token"] ||       // ✅ cron-job.org vai usar isso
-      (req.headers["authorization"] || "").replace(/^Bearer\s+/i, "") ||
-      req.query.token;
-    if (provided !== expected) {
-      return res.status(401).json({ error: "unauthorized" });
-    }
-  }
-  const result = await keepAlive();
-  log[result.ok ? "info" : "error"]("keepalive.ping", { requestId: req.id, ...result });
-  res.json(result);
-}));
 
 router.get("/", (req, res) => res.json({ ok: true }));
 
