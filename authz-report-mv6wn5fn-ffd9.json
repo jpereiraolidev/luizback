@@ -1,0 +1,1045 @@
+{
+  "runId": "mv6wn5fn-ffd9",
+  "startedAt": "2026-10-13T16:38:29.470Z",
+  "baseUrl": "https://luizback-y8qz.vercel.app",
+  "allowDelete": false,
+  "setup": {
+    "attackerA": {
+      "id": "cmv6wn5ml0000ld06u47exyrr",
+      "email": "atk+mv6wn5fn-ffd9-A-f9b4@test.local"
+    },
+    "attackerB": {
+      "id": "cmv6wn60l0001ld061u8unkse",
+      "email": "atk+mv6wn5fn-ffd9-B-18bc@test.local",
+      "coupleId": "cmv6wn69z0003ld06w9jvg2xj"
+    },
+    "victim": {
+      "id": "cmv6wn6tw0006ld06r7dj8ryy",
+      "email": "atk+mv6wn5fn-ffd9-V-9a8e@test.local",
+      "coupleId": "cmv6wn70k0008ld068o4t2vd2",
+      "dependentId": "cmv6wn78g000ald06auwqj0ci",
+      "records": {
+        "water": "cmv6wn7g1000cld06qslapq8d",
+        "pee": "cmv6wn7n5000eld06bai7txko",
+        "poop": "cmv6wn7ux000gld06w0xjr7bx",
+        "behavior": "cmv6wn81m000ild06udi17ady",
+        "sleep": "cmv6wn88u000kld06h2rwwmbg"
+      },
+      "recordTypeId": "cmv6wn8g7000mld06g61a5n4z",
+      "customRecordId": "cmv6wn8o8000old06tt9f282k",
+      "taskId": "cmv6wn8v6000qld06ocil7q73",
+      "inviteToken": "dshMCjHSEM0WoeAKzzuUdQ",
+      "notifId": null
+    }
+  },
+  "results": {
+    "case1": [
+      {
+        "who": "A",
+        "kind": "identity",
+        "ok": true,
+        "status": 200
+      },
+      {
+        "who": "B",
+        "kind": "identity",
+        "ok": true,
+        "status": 200
+      },
+      {
+        "who": "V",
+        "kind": "identity",
+        "ok": true,
+        "status": 200
+      },
+      {
+        "who": "A",
+        "kind": "no-couple",
+        "ok": true,
+        "status": 200
+      },
+      {
+        "who": "B",
+        "kind": "own-couple",
+        "ok": true
+      }
+    ],
+    "case2": [
+      {
+        "id": "dep.get",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/dependent/cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "dep.get",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/dependent/cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "dep.put",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/dependent/cmv6wn78g000ald06auwqj0ci",
+        "body": {
+          "name": "HACK"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "dep.put",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/dependent/cmv6wn78g000ald06auwqj0ci",
+        "body": {
+          "name": "HACK"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "dep.delete",
+        "kind": "delete",
+        "who": "A",
+        "method": "DELETE",
+        "path": "/dependent/cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "dep.delete",
+        "kind": "delete",
+        "who": "B",
+        "method": "DELETE",
+        "path": "/dependent/cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "summary.get",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/summary?dependentId=cmv6wn78g000ald06auwqj0ci&date=2026-10-13",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "summary.get",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/summary?dependentId=cmv6wn78g000ald06auwqj0ci&date=2026-10-13",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "water.list",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/water?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "water.list",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/water?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "pee.list",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/pee?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "pee.list",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/pee?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "poop.list",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/poop?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "poop.list",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/poop?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "behavior.list",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/behavior?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "behavior.list",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/behavior?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "sleep.list",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/sleep?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "sleep.list",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/sleep?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "water.create",
+        "kind": "write",
+        "who": "A",
+        "method": "POST",
+        "path": "/water",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "amount": 100,
+          "timestamp": "2026-10-13T16:38:18.489Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "water.create",
+        "kind": "write",
+        "who": "B",
+        "method": "POST",
+        "path": "/water",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "amount": 100,
+          "timestamp": "2026-10-13T16:38:18.489Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "pee.create",
+        "kind": "write",
+        "who": "A",
+        "method": "POST",
+        "path": "/pee",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "size": "medio",
+          "type": "espontaneo",
+          "timestamp": "2026-10-13T16:38:18.952Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "pee.create",
+        "kind": "write",
+        "who": "B",
+        "method": "POST",
+        "path": "/pee",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "size": "medio",
+          "type": "espontaneo",
+          "timestamp": "2026-10-13T16:38:18.952Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "poop.create",
+        "kind": "write",
+        "who": "A",
+        "method": "POST",
+        "path": "/poop",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "evacuated": true,
+          "timestamp": "2026-10-13T16:38:19.413Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "poop.create",
+        "kind": "write",
+        "who": "B",
+        "method": "POST",
+        "path": "/poop",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "evacuated": true,
+          "timestamp": "2026-10-13T16:38:19.413Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "behavior.create",
+        "kind": "write",
+        "who": "A",
+        "method": "POST",
+        "path": "/behavior",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "observed": "x",
+          "timestamp": "2026-10-13T16:38:19.855Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "behavior.create",
+        "kind": "write",
+        "who": "B",
+        "method": "POST",
+        "path": "/behavior",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "observed": "x",
+          "timestamp": "2026-10-13T16:38:19.855Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "sleep.create",
+        "kind": "write",
+        "who": "A",
+        "method": "POST",
+        "path": "/sleep",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "durationMin": 60,
+          "startAt": "2026-10-13T16:38:20.286Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "sleep.create",
+        "kind": "write",
+        "who": "B",
+        "method": "POST",
+        "path": "/sleep",
+        "body": {
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "durationMin": 60,
+          "startAt": "2026-10-13T16:38:20.286Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "water.update",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/water?id=cmv6wn7g1000cld06qslapq8d",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "water.update",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/water?id=cmv6wn7g1000cld06qslapq8d",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "pee.update",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/pee?id=cmv6wn7n5000eld06bai7txko",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "pee.update",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/pee?id=cmv6wn7n5000eld06bai7txko",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "poop.update",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/poop?id=cmv6wn7ux000gld06w0xjr7bx",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "poop.update",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/poop?id=cmv6wn7ux000gld06w0xjr7bx",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "behavior.update",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/behavior?id=cmv6wn81m000ild06udi17ady",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "behavior.update",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/behavior?id=cmv6wn81m000ild06udi17ady",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "sleep.update",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/sleep?id=cmv6wn88u000kld06h2rwwmbg",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "sleep.update",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/sleep?id=cmv6wn88u000kld06h2rwwmbg",
+        "body": {},
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "water.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "use --allow-delete"
+      },
+      {
+        "id": "pee.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "use --allow-delete"
+      },
+      {
+        "id": "poop.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "use --allow-delete"
+      },
+      {
+        "id": "behavior.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "use --allow-delete"
+      },
+      {
+        "id": "sleep.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "use --allow-delete"
+      },
+      {
+        "id": "rt.update",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/record-types/cmv6wn8g7000mld06g61a5n4z",
+        "body": {
+          "label": "HACK"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "rt.update",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/record-types/cmv6wn8g7000mld06g61a5n4z",
+        "body": {
+          "label": "HACK"
+        },
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Tipo não encontrado"
+        }
+      },
+      {
+        "id": "rt.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "use --allow-delete"
+      },
+      {
+        "id": "cr.create",
+        "kind": "write",
+        "who": "A",
+        "method": "POST",
+        "path": "/custom-records",
+        "body": {
+          "typeId": "cmv6wn8g7000mld06g61a5n4z",
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "data": {
+            "valor": 37
+          },
+          "timestamp": "2026-10-13T16:38:23.839Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "cr.create",
+        "kind": "write",
+        "who": "B",
+        "method": "POST",
+        "path": "/custom-records",
+        "body": {
+          "typeId": "cmv6wn8g7000mld06g61a5n4z",
+          "dependentId": "cmv6wn78g000ald06auwqj0ci",
+          "data": {
+            "valor": 37
+          },
+          "timestamp": "2026-10-13T16:38:23.839Z",
+          "date": "2026-10-13"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "cr.list",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/custom-records?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "cr.list",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/custom-records?dependentId=cmv6wn78g000ald06auwqj0ci",
+        "body": null,
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "cr.update",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/custom-records?id=cmv6wn8o8000old06tt9f282k",
+        "body": {
+          "data": {
+            "valor": 99
+          }
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "cr.update",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/custom-records?id=cmv6wn8o8000old06tt9f282k",
+        "body": {
+          "data": {
+            "valor": 99
+          }
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Dependente de outro casal"
+        }
+      },
+      {
+        "id": "cr.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "use --allow-delete"
+      },
+      {
+        "id": "task.update",
+        "kind": "write",
+        "who": "A",
+        "method": "PUT",
+        "path": "/casal?id=cmv6wn8v6000qld06ocil7q73",
+        "body": {
+          "text": "HACK"
+        },
+        "status": 403,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Você ainda não está em um casal"
+        }
+      },
+      {
+        "id": "task.update",
+        "kind": "write",
+        "who": "B",
+        "method": "PUT",
+        "path": "/casal?id=cmv6wn8v6000qld06ocil7q73",
+        "body": {
+          "text": "HACK"
+        },
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Tarefa não encontrada"
+        }
+      },
+      {
+        "id": "task.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "use --allow-delete"
+      },
+      {
+        "id": "notif.accept",
+        "kind": "write",
+        "who": "A",
+        "method": "POST",
+        "path": "/notifications/null/accept",
+        "body": null,
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Notificação não encontrada"
+        }
+      },
+      {
+        "id": "notif.accept",
+        "kind": "write",
+        "who": "B",
+        "method": "POST",
+        "path": "/notifications/null/accept",
+        "body": null,
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Notificação não encontrada"
+        }
+      },
+      {
+        "id": "notif.reject",
+        "kind": "write",
+        "who": "A",
+        "method": "POST",
+        "path": "/notifications/null/reject",
+        "body": null,
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Notificação não encontrada"
+        }
+      },
+      {
+        "id": "notif.reject",
+        "kind": "write",
+        "who": "B",
+        "method": "POST",
+        "path": "/notifications/null/reject",
+        "body": null,
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "Notificação não encontrada"
+        }
+      },
+      {
+        "id": "il.get",
+        "kind": "read",
+        "status": "SKIP",
+        "reason": "rota sem ID — testada em caso próprio"
+      },
+      {
+        "id": "il.preview",
+        "kind": "read",
+        "who": "A",
+        "method": "GET",
+        "path": "/couple/invite-link/dshMCjHSEM0WoeAKzzuUdQ/preview",
+        "body": null,
+        "status": 200,
+        "verdict": "OK",
+        "responseBody": {
+          "coupleId": "cmv6wn70k0008ld068o4t2vd2",
+          "createdByName": "ATK V",
+          "expiresAt": "2026-10-14T16:38:12.150Z",
+          "remainingUses": 1
+        }
+      },
+      {
+        "id": "il.preview",
+        "kind": "read",
+        "who": "B",
+        "method": "GET",
+        "path": "/couple/invite-link/dshMCjHSEM0WoeAKzzuUdQ/preview",
+        "body": null,
+        "status": 200,
+        "verdict": "OK",
+        "responseBody": {
+          "coupleId": "cmv6wn70k0008ld068o4t2vd2",
+          "createdByName": "ATK V",
+          "expiresAt": "2026-10-14T16:38:12.150Z",
+          "remainingUses": 1
+        }
+      },
+      {
+        "id": "il.delete",
+        "kind": "delete",
+        "status": "SKIP",
+        "reason": "rota sem ID — não aplica IDOR"
+      },
+      {
+        "id": "admin.diag",
+        "kind": "admin",
+        "who": "A",
+        "method": "GET",
+        "path": "/__diag/instance",
+        "body": null,
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "not found"
+        }
+      },
+      {
+        "id": "admin.diag",
+        "kind": "admin",
+        "who": "B",
+        "method": "GET",
+        "path": "/__diag/instance",
+        "body": null,
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "not found"
+        }
+      },
+      {
+        "id": "admin.diag.wrong",
+        "kind": "admin",
+        "who": "A",
+        "method": "GET",
+        "path": "/__diag/instance",
+        "body": null,
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "not found"
+        }
+      },
+      {
+        "id": "admin.diag.wrong",
+        "kind": "admin",
+        "who": "B",
+        "method": "GET",
+        "path": "/__diag/instance",
+        "body": null,
+        "status": 404,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "not found"
+        }
+      },
+      {
+        "id": "admin.health.wrong",
+        "kind": "admin",
+        "who": "A",
+        "method": "GET",
+        "path": "/__health/db",
+        "body": null,
+        "status": 401,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "unauthorized"
+        }
+      },
+      {
+        "id": "admin.health.wrong",
+        "kind": "admin",
+        "who": "B",
+        "method": "GET",
+        "path": "/__health/db",
+        "body": null,
+        "status": 401,
+        "verdict": "OK",
+        "responseBody": {
+          "error": "unauthorized"
+        }
+      },
+      {
+        "id": "admin.cron",
+        "kind": "admin",
+        "status": "SKIP",
+        "reason": "destrutiva sem autorização — só inventariada"
+      }
+    ],
+    "case3": [
+      {
+        "label": "3a token adulterado (userId falso)",
+        "status": 401,
+        "verdict": "OK"
+      },
+      {
+        "label": "3b token assinado com outro secret",
+        "status": 401,
+        "verdict": "OK"
+      },
+      {
+        "label": "3c Authorization malformado",
+        "status": 401,
+        "verdict": "OK"
+      },
+      {
+        "label": "3d sem Authorization",
+        "status": 401,
+        "verdict": "OK"
+      },
+      {
+        "label": "3e token da vítima (simulação de roubo)",
+        "status": 200,
+        "verdict": "SIMULATED"
+      }
+    ]
+  },
+  "summary": {
+    "blocked": 60,
+    "vulnerabilities": 0,
+    "unexpected": 0,
+    "skipped": 0,
+    "byDesign": 0,
+    "verdict": "SEGURO"
+  }
+}

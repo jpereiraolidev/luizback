@@ -1,762 +1,634 @@
-// ============================================================
-// testRotas.js — testa TODAS as rotas da API (local ou prod)
+#!/usr/bin/env node
+// ============================================================================
+// testemestre-authorization.js
+// ----------------------------------------------------------------------------
+// Auditor de AUTORIZAÇÃO (IDOR/BOLA) da API Luizback.
+//
+// Regra de ouro:
+//   Nenhuma rota é inventada. A matriz de testes abaixo deriva do código
+//   real (src/routes.js, src/middleware.js, prisma/schema.prisma).
+//   Toda rota que não pôde ser testada aparece como NÃO TESTADA.
+//
+// Classificação honesta:
+//   VULN       → acessou recurso de outro usuário/casal (bug confirmado)
+//   OK         → bloqueou corretamente (403/404)
+//   BY_DESIGN  → público por contrato (preview de convite, etc.)
+//   SIMULATED  → token de terceiro aceito (JWT é bearer; não é falha)
+//   SKIP       → não testada (destrutiva, ambígua ou sem dados)
+//
 // Uso:
-//   node testRotas.js
-//   BASE=http://localhost:3000 node testRotas.js
-//   BASE=https://luizback.vercel.app node testRotas.js
-// ============================================================
+//   $env:PROMAX_BASE_URL = "https://luizback-y8qz.vercel.app"
+//   node testemestre-authorization.js
+//
+// Flags:
+//   --local             http://localhost:3000
+//   --allow-delete      habilita caso 2.x de DELETE (cria descartável)
+//   --verbose           mostra cada request
+// ============================================================================
 
-const BASE = process.env.BASE || "https://luizback-y8qz.vercel.app/";
+import crypto from "node:crypto";
+import fs from "node:fs";
 
-// ------------------------------------------------------------
-// Cores
-// ------------------------------------------------------------
-const c = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[90m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  cyan: "\x1b[36m",
-  magenta: "\x1b[35m",
+// ---------- CLI ----------
+const args = process.argv.slice(2);
+const FLAGS = {
+  local: args.includes("--local"),
+  allowDelete: args.includes("--allow-delete"),
+  verbose: args.includes("--verbose"),
 };
+const BASE_URL = FLAGS.local
+  ? "https://luizback-y8qz.vercel.app"
+  : (process.env.PROMAX_BASE_URL || "").replace(/\/+$/, "");
+if (!BASE_URL) {
+  console.error("❌ Defina PROMAX_BASE_URL ou use --local");
+  process.exit(1);
+}
+const TIMEOUT_MS = Number(process.env.PROMAX_TIMEOUT || 20000);
+const RUN_ID = `${Date.now().toString(36)}-${crypto.randomBytes(2).toString("hex")}`;
+const REPORT_PATH = `authz-report-${RUN_ID}.json`;
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-let passou = 0;
-let falhou = 0;
+// ---------- VISUAL ----------
+const C = {
+  reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m",
+  red: "\x1b[31m", green: "\x1b[32m", yellow: "\x1b[33m",
+  blue: "\x1b[34m", magenta: "\x1b[35m", cyan: "\x1b[36m",
+  gray: "\x1b[90m", white: "\x1b[97m",
+  bgRed: "\x1b[41m", bgGreen: "\x1b[42m",
+};
+const I = {
+  shield: "🛡", key: "🔑", lock: "🔒", bug: "🐛", ok: "✓",
+  cross: "✗", warn: "⚠", skip: "○", arrow: "▶", target: "🎯",
+  bolt: "⚡", info: "ℹ", skull: "☠",
+};
+const stripAnsi = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, "");
+const vlen = (s) => stripAnsi(s).length;
+const pad = (s, n) => (vlen(s) >= n ? s : s + " ".repeat(n - vlen(s)));
+const padLeft = (s, n) => (vlen(s) >= n ? s : " ".repeat(n - vlen(s)) + s);
+const trunc = (s, n) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+const hline = (n = 78) => C.gray + "─".repeat(n) + C.reset;
 
-function titulo(msg) {
+function title() {
   console.log("");
-  console.log(`${c.magenta}${c.bold}━━━ ${msg} ━━━${c.reset}`);
+  console.log(`${C.bold}${C.magenta}╔${"═".repeat(76)}╗${C.reset}`);
+  console.log(`${C.bold}${C.magenta}║${C.reset}  ${C.bold}${C.white}${pad("TESTEMESTRE — AUTHORIZATION AUDITOR", 74)}${C.reset}${C.bold}${C.magenta}║${C.reset}`);
+  console.log(`${C.bold}${C.magenta}║${C.reset}  ${C.dim}${pad(BASE_URL, 74)}${C.reset}${C.bold}${C.magenta}║${C.reset}`);
+  console.log(`${C.bold}${C.magenta}║${C.reset}  ${C.dim}${pad(`runId: ${RUN_ID}   delete: ${FLAGS.allowDelete ? "ON" : "OFF"}`, 74)}${C.reset}${C.bold}${C.magenta}║${C.reset}`);
+  console.log(`${C.bold}${C.magenta}╚${"═".repeat(76)}╝${C.reset}`);
+}
+function section(icon, t, sub) {
+  console.log("");
+  console.log(`${C.bold}${C.blue}${icon}  ${t}${C.reset}${sub ? `  ${C.dim}${sub}${C.reset}` : ""}`);
+  console.log(hline());
+}
+function line(icon, color, label, detail = "") {
+  console.log(`  ${color}${icon}${C.reset} ${pad(label, 48)} ${C.dim}${detail}${C.reset}`);
 }
 
-function mostrarResultado(nome, ok, dados) {
-  if (ok) {
-    passou++;
-    console.log(`  ${c.green}✔${c.reset} ${nome}`);
-  } else {
-    falhou++;
-    console.log(`  ${c.red}✘${c.reset} ${nome}`);
-  }
-  if (dados !== undefined) {
-    const str = JSON.stringify(dados);
-    const trunc = str.length > 140 ? str.slice(0, 140) + "…" : str;
-    console.log(`    ${c.dim}${trunc}${c.reset}`);
-  }
-}
-
-// Sessão do usuário logado (token atual)
-let TOKEN = null;
-
-async function req(method, path, body, opts = {}) {
-  const headers = { "Content-Type": "application/json" };
-  const token = opts.token !== undefined ? opts.token : TOKEN;
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const fetchOpts = { method, headers };
-  if (body) fetchOpts.body = JSON.stringify(body);
-
-  const res = await fetch(BASE + path, fetchOpts);
-  let data;
+// ---------- HTTP ----------
+async function http(method, path, { body, token, headers = {} } = {}) {
+  const url = path.startsWith("http") ? path : BASE_URL + path;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const h = { ...headers };
+  if (token) h["Authorization"] = `Bearer ${token}`;
+  if (body !== undefined) h["Content-Type"] = "application/json";
+  const t0 = Date.now();
+  let res, text, json = null, netErr = null;
   try {
-    data = await res.json();
-  } catch {
-    data = null;
+    res = await fetch(url, {
+      method, headers: h,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    text = await res.text();
+    if (text) { try { json = JSON.parse(text); } catch {} }
+  } catch (e) {
+    netErr = e.name === "AbortError" ? "TIMEOUT" : e.message;
   }
-  return { status: res.status, data };
-}
-
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
-
-const TEST_DATE = new Date().toISOString().slice(0, 10);
-
-// ============================================================
-// HEALTH
-// ============================================================
-async function testHealth() {
-  titulo("Health check");
-  const { status, data } = await req("GET", "/", null, { token: null });
-  const ok = status === 200 && data && data.ok === true;
-  mostrarResultado(`GET / → ${status}`, ok, data);
-}
-
-// ============================================================
-// AUTH
-// ============================================================
-async function testAuth() {
-  titulo("AUTH — register / login / me");
-
-  const email = `joao_${uid()}@teste.com`;
-  const password = "senha123456";
-
-  // Register
-  const reg = await req("POST", "/auth/register", { email, password, name: "João Teste" }, { token: null });
-  const regOk = reg.status === 201 && reg.data?.token && reg.data?.user?.id;
-  mostrarResultado(`POST /auth/register → ${reg.status}`, regOk, {
-    user: reg.data?.user?.email,
-    hasToken: !!reg.data?.token,
-  });
-  if (!regOk) throw new Error("Falha no register — não dá pra continuar");
-  TOKEN = reg.data.token;
-  const userJoao = reg.data.user;
-
-  // Register duplicado → 409
-  const dup = await req("POST", "/auth/register", { email, password, name: "X" }, { token: null });
-  mostrarResultado(`POST /auth/register (dup) → ${dup.status} (esperado 409)`, dup.status === 409);
-
-  // Register email inválido → 400
-  const badEmail = await req("POST", "/auth/register", { email: "abc", password, name: "X" }, { token: null });
-  mostrarResultado(`POST /auth/register (email inválido) → ${badEmail.status} (esperado 400)`, badEmail.status === 400);
-
-  // Register senha curta → 400
-  const badPwd = await req("POST", "/auth/register", { email: `x_${uid()}@t.com`, password: "123", name: "X" }, { token: null });
-  mostrarResultado(`POST /auth/register (senha curta) → ${badPwd.status} (esperado 400)`, badPwd.status === 400);
-
-  // Login
-  const login = await req("POST", "/auth/login", { email, password }, { token: null });
-  mostrarResultado(`POST /auth/login → ${login.status}`, login.status === 200 && login.data?.token);
-
-  // Login senha errada → 401
-  const loginBad = await req("POST", "/auth/login", { email, password: "errada" }, { token: null });
-  mostrarResultado(`POST /auth/login (senha errada) → ${loginBad.status} (esperado 401)`, loginBad.status === 401);
-
-  // Me
-  const me = await req("GET", "/auth/me");
-  mostrarResultado(`GET /auth/me → ${me.status}`, me.status === 200 && me.data?.user?.id === userJoao.id);
-
-  // Me sem token → 401
-  const meNoToken = await req("GET", "/auth/me", null, { token: null });
-  mostrarResultado(`GET /auth/me (sem token) → ${meNoToken.status} (esperado 401)`, meNoToken.status === 401);
-
-  // Me com token inválido → 401
-  const meBad = await req("GET", "/auth/me", null, { token: "xxx.yyy.zzz" });
-  mostrarResultado(`GET /auth/me (token inválido) → ${meBad.status} (esperado 401)`, meBad.status === 401);
-
-  // Salva pra próxima etapa
-  globalThis.__joao = { email, password, user: userJoao };
-}
-
-// ============================================================
-// COUPLE
-// ============================================================
-async function testCouple() {
-  titulo("COUPLE — criar / me / invite / prefs");
-
-  // Cria casal (João)
-  const create = await req("POST", "/couple");
-  const createOk = create.status === 201 && create.data?.couple?.id;
-  mostrarResultado(`POST /couple → ${create.status}`, createOk, {
-    id: create.data?.couple?.id,
-    members: create.data?.couple?.members?.length,
-  });
-  if (!createOk) throw new Error("Falha ao criar casal");
-  const coupleId = create.data.couple.id;
-
-  // Criar casal de novo → 409
-  const dup = await req("POST", "/couple");
-  mostrarResultado(`POST /couple (dup) → ${dup.status} (esperado 409)`, dup.status === 409);
-
-  // Me
-  const me = await req("GET", "/couple/me");
-  mostrarResultado(`GET /couple/me → ${me.status}`, me.status === 200 && me.data?.couple?.id === coupleId);
-
-  // Prefs
-  const prefs = await req("PUT", "/couple/prefs", { color: "purple", theme: "glass" });
-  mostrarResultado(
-    `PUT /couple/prefs → ${prefs.status}`,
-    prefs.status === 200 && prefs.data?.couple?.color === "purple"
-  );
-
-  globalThis.__couple = { coupleId };
-}
-
-// ============================================================
-// COUPLE INVITE + NOTIFICATIONS (fluxo completo)
-// ============================================================
-async function testInviteFlow() {
-  titulo("COUPLE INVITE + NOTIFICATIONS");
-
-  // Cria a Lais
-  const emailLais = `lais_${uid()}@teste.com`;
-  const passwordLais = "senha123456";
-  const regLais = await req(
-    "POST",
-    "/auth/register",
-    { email: emailLais, password: passwordLais, name: "Lais Teste" },
-    { token: null }
-  );
-  mostrarResultado(`POST /auth/register (Lais) → ${regLais.status}`, regLais.status === 201);
-  const tokenLais = regLais.data?.token;
-  const userLais = regLais.data?.user;
-
-  // João convida Lais
-  const invite = await req("POST", "/couple/invite", { email: emailLais });
-  const inviteOk = invite.status === 201 && invite.data?.notification?.id;
-  mostrarResultado(`POST /couple/invite → ${invite.status}`, inviteOk, {
-    id: invite.data?.notification?.id,
-    status: invite.data?.notification?.status,
-  });
-  const notifId = invite.data?.notification?.id;
-
-  // Convidar email que não existe → 404
-  const inviteNo = await req("POST", "/couple/invite", { email: `naoexiste_${uid()}@x.com` });
-  mostrarResultado(`POST /couple/invite (inexistente) → ${inviteNo.status} (esperado 404)`, inviteNo.status === 404);
-
-  // Convidar a si mesmo → 400
-  const inviteSelf = await req("POST", "/couple/invite", { email: globalThis.__joao.email });
-  mostrarResultado(`POST /couple/invite (self) → ${inviteSelf.status} (esperado 400)`, inviteSelf.status === 400);
-
-  // Convidar de novo a mesma → 409
-  const inviteDup = await req("POST", "/couple/invite", { email: emailLais });
-  mostrarResultado(`POST /couple/invite (dup) → ${inviteDup.status} (esperado 409)`, inviteDup.status === 409);
-
-  // Lais vê notificações
-  const notifs = await req("GET", "/notifications?status=PENDING", null, { token: tokenLais });
-  const listOk = notifs.status === 200 && Array.isArray(notifs.data) && notifs.data.length === 1;
-  mostrarResultado(
-    `GET /notifications (Lais) → ${notifs.status} (${notifs.data?.length ?? 0} itens)`,
-    listOk,
-    notifs.data?.[0]
-  );
-
-  // Lais tenta aceitar notif do João (que não é dela) → 403
-  // Primeiro: João tenta aceitar a própria notif → 403
-  const acceptWrong = await req("POST", `/notifications/${notifId}/accept`);
-  mostrarResultado(
-    `POST /notifications/:id/accept (remetente) → ${acceptWrong.status} (esperado 403)`,
-    acceptWrong.status === 403
-  );
-
-  // Lais aceita
-  const accept = await req("POST", `/notifications/${notifId}/accept`, null, { token: tokenLais });
-  mostrarResultado(
-    `POST /notifications/:id/accept (Lais) → ${accept.status}`,
-    accept.status === 200 && accept.data?.accepted === true,
-    accept.data
-  );
-
-  // Lais agora tem coupleId
-  const meLais = await req("GET", "/auth/me", null, { token: tokenLais });
-  const coupleOk = meLais.data?.user?.coupleId === globalThis.__couple.coupleId;
-  mostrarResultado(
-    `GET /auth/me (Lais) tem coupleId → ${meLais.status}`,
-    coupleOk,
-    { coupleId: meLais.data?.user?.coupleId }
-  );
-
-  // Aceitar de novo → 409 (já não está PENDING)
-  const acceptAgain = await req("POST", `/notifications/${notifId}/accept`, null, { token: tokenLais });
-  mostrarResultado(
-    `POST /notifications/:id/accept (repetido) → ${acceptAgain.status} (esperado 409)`,
-    acceptAgain.status === 409
-  );
-
-  // Couple agora tem 2 membros
-  const meCouple = await req("GET", "/couple/me");
-  const membersOk = meCouple.data?.couple?.members?.length === 2;
-  mostrarResultado(
-    `GET /couple/me (2 membros) → ${meCouple.status}`,
-    membersOk,
-    { members: meCouple.data?.couple?.members?.length }
-  );
-
-  globalThis.__lais = { email: emailLais, password: passwordLais, token: tokenLais, user: userLais };
-}
-
-// ============================================================
-// NOTIFICAÇÕES — reject e cancel
-// ============================================================
-async function testNotifRejectCancel() {
-  titulo("NOTIFICATIONS — reject / cancel");
-
-  // Cria um terceiro user pra testar reject
-  const email3 = `outro_${uid()}@teste.com`;
-  const reg3 = await req(
-    "POST",
-    "/auth/register",
-    { email: email3, password: "senha123456", name: "Outro" },
-    { token: null }
-  );
-  const token3 = reg3.data?.token;
-  const user3 = reg3.data?.user;
-
-  // João convida esse terceiro
-  const invite = await req("POST", "/couple/invite", { email: email3 });
-  const notifId = invite.data?.notification?.id;
-  mostrarResultado(`POST /couple/invite (terceiro) → ${invite.status}`, invite.status === 201);
-
-  // Terceiro rejeita
-  const reject = await req("POST", `/notifications/${notifId}/reject`, null, { token: token3 });
-  mostrarResultado(
-    `POST /notifications/:id/reject → ${reject.status}`,
-    reject.status === 200 && reject.data?.rejected === true
-  );
-
-  // Terceiro não tem coupleId
-  const me3 = await req("GET", "/auth/me", null, { token: token3 });
-  mostrarResultado(
-    `GET /auth/me (terceiro) sem coupleId → ${me3.status}`,
-    me3.data?.user?.coupleId === null
-  );
-
-  // Convidar de novo (agora que foi rejeitado) → 201
-  const invite2 = await req("POST", "/couple/invite", { email: email3 });
-  mostrarResultado(`POST /couple/invite (após reject) → ${invite2.status}`, invite2.status === 201);
-  const notifId2 = invite2.data?.notification?.id;
-
-  // João cancela (DELETE)
-  const cancel = await req("DELETE", `/notifications/${notifId2}`);
-  mostrarResultado(
-    `DELETE /notifications/:id (cancelar) → ${cancel.status}`,
-    cancel.status === 200 && cancel.data?.cancelled === true
-  );
-
-  // Terceiro tenta cancelar (não foi ele que enviou) → 403
-  const cancelWrong = await req("DELETE", `/notifications/${notifId2}`, null, { token: token3 });
-  mostrarResultado(
-    `DELETE /notifications/:id (destinatário) → ${cancelWrong.status} (esperado 403)`,
-    cancelWrong.status === 403
-  );
-}
-
-// ============================================================
-// DEPENDENT
-// ============================================================
-async function testDependent() {
-  titulo("DEPENDENT — CRUD");
-
-  // Lista vazia
-  const empty = await req("GET", "/dependent");
-  mostrarResultado(
-    `GET /dependent (inicial) → ${empty.status} (${empty.data?.length ?? 0} itens)`,
-    empty.status === 200 && Array.isArray(empty.data)
-  );
-
-  // Cria
-  const post = await req("POST", "/dependent", {
-    name: "Luiz Teste",
-    birthDate: "2020-05-10",
-  });
-  const criadoOk = post.status === 201 && post.data?.id && post.data.name === "Luiz Teste";
-  mostrarResultado(`POST /dependent → ${post.status}`, criadoOk, post.data);
-  const depId = post.data?.id;
-
-  // Sem name → 400
-  const semName = await req("POST", "/dependent", { birthDate: "2020-01-01" });
-  mostrarResultado(`POST /dependent (sem name) → ${semName.status} (esperado 400)`, semName.status === 400);
-
-  // birthDate inválida → 400
-  const badDate = await req("POST", "/dependent", { name: "X", birthDate: "10/05/2020" });
-  mostrarResultado(`POST /dependent (birthDate inválida) → ${badDate.status} (esperado 400)`, badDate.status === 400);
-
-  // GET /:id
-  const getOne = await req("GET", `/dependent/${depId}`);
-  mostrarResultado(`GET /dependent/:id → ${getOne.status}`, getOne.status === 200 && getOne.data?.id === depId);
-
-  // GET id inexistente → 404
-  const getNo = await req("GET", `/dependent/naoexiste`);
-  mostrarResultado(`GET /dependent/inexistente → ${getNo.status} (esperado 404)`, getNo.status === 404);
-
-  // UPDATE
-  const put = await req("PUT", `/dependent/${depId}`, { name: "Luiz Atualizado", avatar: "🦁" });
-  mostrarResultado(
-    `PUT /dependent/:id → ${put.status}`,
-    put.status === 200 && put.data?.name === "Luiz Atualizado" && put.data?.avatar === "🦁"
-  );
-
-  globalThis.__dependent = { id: depId };
-}
-
-// ============================================================
-// WATER / PEE / POOP / BEHAVIOR (do dependente)
-// ============================================================
-async function testRegistros() {
-  titulo("WATER — CRUD (dependente)");
-  const depId = globalThis.__dependent.id;
-
-  const post = await req("POST", "/water", {
-    dependentId: depId,
-    amount: 150,
-    reason: "Sede",
-    timestamp: new Date().toISOString(),
-    date: TEST_DATE,
-  });
-  const criadoOk = post.status === 201 && post.data?.id;
-  mostrarResultado(`POST /water → ${post.status}`, criadoOk, post.data);
-  const id = post.data?.id;
-
-  const get = await req("GET", `/water?dependentId=${depId}&date=${TEST_DATE}`);
-  mostrarResultado(
-    `GET /water?dependentId=...&date=... → ${get.status} (${get.data?.length ?? 0} itens)`,
-    get.status === 200 && Array.isArray(get.data)
-  );
-
-  if (id) {
-    const put = await req("PUT", `/water?id=${id}`, { amount: 200, reason: "Calor" });
-    mostrarResultado(`PUT /water?id=... → ${put.status}`, put.status === 200 && put.data?.amount === 200);
+  clearTimeout(t);
+  const out = { ok: res?.ok, status: res?.status ?? 0, json, text, ms: Date.now() - t0, netErr };
+  if (FLAGS.verbose) {
+    const color = out.status >= 500 ? C.red : out.status >= 400 ? C.yellow : C.green;
+    console.log(`    ${C.dim}${color}${method} ${path} → ${out.status} (${out.ms}ms)${C.reset}`);
   }
-
-  // Sem dependentId → 400
-  const semDep = await req("POST", "/water", {
-    amount: 100,
-    timestamp: new Date().toISOString(),
-    date: TEST_DATE,
-  });
-  mostrarResultado(`POST /water (sem dependentId) → ${semDep.status} (esperado 400)`, semDep.status === 400);
-
-  // Sem campos → 400
-  const semCampos = await req("POST", "/water", { dependentId: depId, amount: 100 });
-  mostrarResultado(`POST /water (sem date/timestamp) → ${semCampos.status} (esperado 400)`, semCampos.status === 400);
-
-  // dependentId de outro casal → 403
-  // (não temos como testar isso facilmente sem criar outro casal, skip)
-
-  if (id) await req("DELETE", `/water?id=${id}`);
-
-  // ----- PEE -----
-  titulo("PEE — CRUD (dependente)");
-  const pee = await req("POST", "/pee", {
-    dependentId: depId,
-    size: "medio",
-    type: "espontaneo",
-    note: "teste",
-    timestamp: new Date().toISOString(),
-    date: TEST_DATE,
-  });
-  mostrarResultado(`POST /pee → ${pee.status}`, pee.status === 201 && pee.data?.id);
-  const peeId = pee.data?.id;
-
-  const peeGet = await req("GET", `/pee?dependentId=${depId}&date=${TEST_DATE}`);
-  mostrarResultado(`GET /pee → ${peeGet.status} (${peeGet.data?.length ?? 0} itens)`, peeGet.status === 200);
-
-  if (peeId) {
-    const peePut = await req("PUT", `/pee?id=${peeId}`, { size: "grande", type: "acidente" });
-    mostrarResultado(`PUT /pee → ${peePut.status}`, peePut.status === 200 && peePut.data?.size === "grande");
-    await req("DELETE", `/pee?id=${peeId}`);
-  }
-
-  // ----- POOP -----
-  titulo("POOP — CRUD (dependente)");
-  const poop = await req("POST", "/poop", {
-    dependentId: depId,
-    evacuated: true,
-    consistency: "Normal",
-    pain: 1,
-    note: "teste",
-    timestamp: new Date().toISOString(),
-    date: TEST_DATE,
-  });
-  mostrarResultado(`POST /poop → ${poop.status}`, poop.status === 201 && poop.data?.id);
-  const poopId = poop.data?.id;
-
-  const poopGet = await req("GET", `/poop?dependentId=${depId}&date=${TEST_DATE}`);
-  mostrarResultado(`GET /poop → ${poopGet.status} (${poopGet.data?.length ?? 0} itens)`, poopGet.status === 200);
-
-  if (poopId) {
-    const poopPut = await req("PUT", `/poop?id=${poopId}`, { consistency: "Mole", pain: 2 });
-    mostrarResultado(`PUT /poop → ${poopPut.status}`, poopPut.status === 200 && poopPut.data?.consistency === "Mole");
-    await req("DELETE", `/poop?id=${poopId}`);
-  }
-
-  // ----- BEHAVIOR -----
-  titulo("BEHAVIOR — CRUD (dependente)");
-  const beh = await req("POST", "/behavior", {
-    dependentId: depId,
-    observed: "Jogou objeto",
-    rule: "Não jogar objetos",
-    action: "Pausa de 5 min",
-    duration: 5,
-    result: "Voltou à atividade",
-    timestamp: new Date().toISOString(),
-    date: TEST_DATE,
-  });
-  mostrarResultado(`POST /behavior → ${beh.status}`, beh.status === 201 && beh.data?.id);
-  const behId = beh.data?.id;
-
-  const behGet = await req("GET", `/behavior?dependentId=${depId}&date=${TEST_DATE}`);
-  mostrarResultado(`GET /behavior → ${behGet.status} (${behGet.data?.length ?? 0} itens)`, behGet.status === 200);
-
-  if (behId) {
-    const behPut = await req("PUT", `/behavior?id=${behId}`, { duration: 10, result: "Acalmou" });
-    mostrarResultado(`PUT /behavior → ${behPut.status}`, behPut.status === 200 && behPut.data?.duration === 10);
-    await req("DELETE", `/behavior?id=${behId}`);
-  }
+  return out;
 }
 
-// ============================================================
-// SUMMARY
-// ============================================================
-async function testSummary() {
-  titulo("SUMMARY — agregado 7 dias");
+// ---------- HELPERS ----------
+const uniqueEmail = (tag) => `atk+${RUN_ID}-${tag}-${crypto.randomBytes(2).toString("hex")}@test.local`;
+const nowTs = () => new Date().toISOString();
+const ymd = (d = new Date()) => d.toISOString().slice(0, 10);
 
-  const depId = globalThis.__dependent.id;
+async function registerUser(tag) {
+  const email = uniqueEmail(tag);
+  const password = "atk-" + crypto.randomBytes(3).toString("hex");
+  const r = await http("POST", "/auth/register", { body: { email, password, name: `ATK ${tag}` } });
+  if (r.status !== 201) throw new Error(`register ${tag}: ${r.status} ${trunc(r.text, 120)}`);
+  return { id: r.json.user.id, email, password, token: r.json.token, name: `ATK ${tag}` };
+}
+async function createCouple(u) {
+  const r = await http("POST", "/couple", { token: u.token });
+  if (r.status !== 201) throw new Error(`couple: ${r.status}`);
+  return r.json.couple.id;
+}
+async function createDependent(u, name) {
+  const r = await http("POST", "/dependent", { token: u.token, body: { name } });
+  if (r.status !== 201) throw new Error(`dependent: ${r.status}`);
+  return r.json;
+}
 
-  const { status, data } = await req("GET", `/summary?dependentId=${depId}&date=${TEST_DATE}`);
-  const ok =
-    status === 200 &&
-    data &&
-    Array.isArray(data.water) &&
-    Array.isArray(data.pee) &&
-    Array.isArray(data.poop) &&
-    Array.isArray(data.behavior) &&
-    data.weekly?.water?.length === 7 &&
-    data.weekly?.pee?.length === 7;
+// ============================================================================
+// MATRIZ DE TESTES
+// ============================================================================
+// Cada entrada:
+//   id       — identificador do caso
+//   kind     — "read" | "write" | "delete" | "admin"
+//   label    — texto curto
+//   expected — [403,404] para bloqueio esperado
+//   build    — função que retorna { method, path, body? }
+//              recebe ctx = { victim, attacker }
+//   skip     — motivo (opcional) — só testa se skip não estiver definido
+// ============================================================================
 
-  mostrarResultado(`GET /summary → ${status}`, ok, {
-    water: data?.water?.length,
-    pee: data?.pee?.length,
-    poop: data?.poop?.length,
-    behavior: data?.behavior?.length,
-    weeklyWater: data?.weekly?.water?.length,
-    weeklyPee: data?.weekly?.pee?.length,
+const MATRIX = [
+  // ---------- DEPENDENT ----------
+  { id: "dep.get",    kind: "read",  label: "GET    /dependent/:id",
+    expected: [403,404], build: (c) => ({ method: "GET", path: `/dependent/${c.victim.dep.id}` }) },
+  { id: "dep.put",    kind: "write", label: "PUT    /dependent/:id",
+    expected: [403,404], build: (c) => ({ method: "PUT", path: `/dependent/${c.victim.dep.id}`, body: { name: "HACK" } }) },
+  { id: "dep.delete", kind: "delete", label: "DELETE /dependent/:id",
+    expected: [403,404], build: (c) => ({ method: "DELETE", path: `/dependent/${c.victim.dep.id}` }) },
+
+  // ---------- SUMMARY ----------
+  { id: "summary.get", kind: "read", label: "GET    /summary?dependentId=<vítima>",
+    expected: [403,404], build: (c) => ({ method: "GET", path: `/summary?dependentId=${c.victim.dep.id}&date=${ymd()}` }) },
+
+  // ---------- REGISTROS (list) ----------
+  ...["water","pee","poop","behavior","sleep"].map((m) => ({
+    id: `${m}.list`, kind: "read", label: `GET    /${m}?dependentId=<vítima>`,
+    expected: [403,404],
+    build: (c) => ({ method: "GET", path: `/${m}?dependentId=${c.victim.dep.id}` }),
+  })),
+
+  // ---------- REGISTROS (create, apontando para dependente da vítima) ----------
+  { id: "water.create",    kind: "write", label: "POST   /water → dependentId vítima",
+    expected: [403,404],
+    build: (c) => ({ method: "POST", path: "/water", body: { dependentId: c.victim.dep.id, amount: 100, timestamp: nowTs(), date: ymd() } }) },
+  { id: "pee.create",      kind: "write", label: "POST   /pee → dependentId vítima",
+    expected: [403,404],
+    build: (c) => ({ method: "POST", path: "/pee", body: { dependentId: c.victim.dep.id, size: "medio", type: "espontaneo", timestamp: nowTs(), date: ymd() } }) },
+  { id: "poop.create",     kind: "write", label: "POST   /poop → dependentId vítima",
+    expected: [403,404],
+    build: (c) => ({ method: "POST", path: "/poop", body: { dependentId: c.victim.dep.id, evacuated: true, timestamp: nowTs(), date: ymd() } }) },
+  { id: "behavior.create", kind: "write", label: "POST   /behavior → dependentId vítima",
+    expected: [403,404],
+    build: (c) => ({ method: "POST", path: "/behavior", body: { dependentId: c.victim.dep.id, observed: "x", timestamp: nowTs(), date: ymd() } }) },
+  { id: "sleep.create",    kind: "write", label: "POST   /sleep → dependentId vítima",
+    expected: [403,404],
+    build: (c) => ({ method: "POST", path: "/sleep", body: { dependentId: c.victim.dep.id, durationMin: 60, startAt: nowTs(), date: ymd() } }) },
+
+  // ---------- REGISTROS (update/delete por id) ----------
+  ...["water","pee","poop","behavior","sleep"].map((m) => ({
+    id: `${m}.update`, kind: "write", label: `PUT    /${m}?id=<vítima>`,
+    expected: [403,404],
+    build: (c) => ({ method: "PUT", path: `/${m}?id=${c.victim.records[m]}`, body: {} }),
+  })),
+  ...["water","pee","poop","behavior","sleep"].map((m) => ({
+    id: `${m}.delete`, kind: "delete", label: `DELETE /${m}?id=<vítima>`,
+    expected: [403,404],
+    skip: !FLAGS.allowDelete ? "use --allow-delete" : null,
+    build: (c) => ({ method: "DELETE", path: `/${m}?id=${c.victim.records[m]}` }),
+  })),
+
+  // ---------- RECORD TYPES (custom) ----------
+  { id: "rt.update", kind: "write",  label: "PUT    /record-types/:id (vítima)",
+    expected: [403,404], build: (c) => ({ method: "PUT", path: `/record-types/${c.victim.recordTypeId}`, body: { label: "HACK" } }) },
+  { id: "rt.delete", kind: "delete", label: "DELETE /record-types/:id (vítima)",
+    expected: [403,404], skip: !FLAGS.allowDelete ? "use --allow-delete" : null,
+    build: (c) => ({ method: "DELETE", path: `/record-types/${c.victim.recordTypeId}` }) },
+
+  // ---------- CUSTOM RECORDS ----------
+  { id: "cr.create", kind: "write", label: "POST   /custom-records → typeId/dep vítima",
+    expected: [403,404],
+    build: (c) => ({ method: "POST", path: "/custom-records", body: {
+      typeId: c.victim.recordTypeId, dependentId: c.victim.dep.id,
+      data: { valor: 37 }, timestamp: nowTs(), date: ymd(),
+    } }) },
+  { id: "cr.list", kind: "read", label: "GET    /custom-records?dependentId=<vítima>",
+    expected: [403,404],
+    build: (c) => ({ method: "GET", path: `/custom-records?dependentId=${c.victim.dep.id}` }) },
+  { id: "cr.update", kind: "write", label: "PUT    /custom-records?id=<vítima>",
+    expected: [403,404],
+    build: (c) => ({ method: "PUT", path: `/custom-records?id=${c.victim.customRecordId}`, body: { data: { valor: 99 } } }) },
+  { id: "cr.delete", kind: "delete", label: "DELETE /custom-records?id=<vítima>",
+    expected: [403,404], skip: !FLAGS.allowDelete ? "use --allow-delete" : null,
+    build: (c) => ({ method: "DELETE", path: `/custom-records?id=${c.victim.customRecordId}` }) },
+
+  // ---------- COUPLE TASKS ----------
+  { id: "task.update", kind: "write", label: "PUT    /casal?id=<vítima>",
+    expected: [403,404],
+    build: (c) => ({ method: "PUT", path: `/casal?id=${c.victim.taskId}`, body: { text: "HACK" } }) },
+  { id: "task.delete", kind: "delete", label: "DELETE /casal?id=<vítima>",
+    expected: [403,404], skip: !FLAGS.allowDelete ? "use --allow-delete" : null,
+    build: (c) => ({ method: "DELETE", path: `/casal?id=${c.victim.taskId}` }) },
+
+  // ---------- NOTIFICATIONS ----------
+  { id: "notif.accept", kind: "write", label: "POST   /notifications/:id/accept (vítima)",
+    expected: [403,404],
+    build: (c) => ({ method: "POST", path: `/notifications/${c.victim.notifId}/accept` }) },
+  { id: "notif.reject", kind: "write", label: "POST   /notifications/:id/reject (vítima)",
+    expected: [403,404],
+    build: (c) => ({ method: "POST", path: `/notifications/${c.victim.notifId}/reject` }) },
+
+  // ---------- INVITE-LINK ----------
+  { id: "il.get",    kind: "read",  label: "GET    /couple/invite-link",
+    expected: [200],   // o atacante vê o PRÓPRIO link, não o da vítima
+    skip: "rota sem ID — testada em caso próprio",
+    build: (c) => ({ method: "GET", path: "/couple/invite-link" }) },
+  { id: "il.preview", kind: "read", label: "GET    /couple/invite-link/:token/preview (vítima)",
+    expected: [200],
+    classify: "BY_DESIGN",  // público por contrato
+    build: (c) => ({ method: "GET", path: `/couple/invite-link/${c.victim.inviteToken}/preview` }) },
+  { id: "il.delete", kind: "delete", label: "DELETE /couple/invite-link (atacante)",
+    expected: [200],
+    skip: "rota sem ID — não aplica IDOR",
+    build: (c) => ({ method: "DELETE", path: "/couple/invite-link" }) },
+
+  // ---------- ROTAS ADMIN (read-only ou protegidas por token) ----------
+  { id: "admin.diag", kind: "admin", label: "GET    /__diag/instance (sem token)",
+    expected: [404],
+    build: () => ({ method: "GET", path: "/__diag/instance" }) },
+  { id: "admin.diag.wrong", kind: "admin", label: "GET    /__diag/instance (token errado)",
+    expected: [404], headers: { "x-diag-token": "wrong" },
+    build: () => ({ method: "GET", path: "/__diag/instance" }) },
+  { id: "admin.health.wrong", kind: "admin", label: "GET    /__health/db (token errado)",
+    expected: [401], headers: { "x-keepalive-token": "wrong" },
+    build: () => ({ method: "GET", path: "/__health/db" }) },
+  { id: "admin.cron", kind: "admin", label: "GET    /__cron/prune-logs",
+    expected: [401],
+    skip: "destrutiva sem autorização — só inventariada",
+    build: () => ({ method: "GET", path: "/__cron/prune-logs" }) },
+];
+
+// ============================================================================
+// SETUP — cria atacantes e vítima
+// ============================================================================
+async function setup() {
+  section("🎯", "SETUP", "criando atacantes e vítima");
+
+  // Atacante A — sem casal
+  const attackerA = await registerUser("A");
+  line(I.ok, C.green, "atacante A (sem casal)", attackerA.email);
+
+  // Atacante B — com casal próprio
+  const attackerB = await registerUser("B");
+  const attackerBCoupleId = await createCouple(attackerB);
+  const attackerBDep = await createDependent(attackerB, `ATK-B dep ${RUN_ID}`);
+  line(I.ok, C.green, "atacante B (com casal)", `${attackerB.email} → coupleId ${attackerBCoupleId.slice(0, 12)}…`);
+
+  // Vítima — com casal completo
+  const victim = await registerUser("V");
+  const victimCoupleId = await createCouple(victim);
+  const dep = await createDependent(victim, `VÍTIMA dep ${RUN_ID}`);
+  line(I.ok, C.green, "vítima: couple + dependent", `${victim.email}`);
+
+  const today = ymd();
+  const ts = nowTs();
+
+  // Registros da vítima (um de cada tipo)
+  const records = {};
+  const water = await http("POST", "/water", { token: victim.token, body: { dependentId: dep.id, amount: 250, timestamp: ts, date: today } });
+  if (water.status === 201) records.water = water.json.id;
+  const pee = await http("POST", "/pee", { token: victim.token, body: { dependentId: dep.id, size: "medio", type: "espontaneo", timestamp: ts, date: today } });
+  if (pee.status === 201) records.pee = pee.json.id;
+  const poop = await http("POST", "/poop", { token: victim.token, body: { dependentId: dep.id, evacuated: true, timestamp: ts, date: today } });
+  if (poop.status === 201) records.poop = poop.json.id;
+  const behavior = await http("POST", "/behavior", { token: victim.token, body: { dependentId: dep.id, observed: "obs", timestamp: ts, date: today } });
+  if (behavior.status === 201) records.behavior = behavior.json.id;
+  const sleep = await http("POST", "/sleep", { token: victim.token, body: { dependentId: dep.id, durationMin: 90, startAt: ts, date: today } });
+  if (sleep.status === 201) records.sleep = sleep.json.id;
+  line(I.ok, C.green, "vítima: registros", `water=${!!records.water} pee=${!!records.pee} poop=${!!records.poop} behavior=${!!records.behavior} sleep=${!!records.sleep}`);
+
+  // Record-type + custom-record
+  const slug = `atk-audit-${crypto.randomBytes(2).toString("hex")}`;
+  const rt = await http("POST", "/record-types", {
+    token: victim.token,
+    body: {
+      slug, label: "Auditoria", icon: "🔎",
+      fields: [{ name: "valor", label: "Valor", type: "number", required: true, min: 0, max: 1000 }],
+    },
   });
-
-  const semDate = await req("GET", `/summary?dependentId=${depId}`);
-  mostrarResultado(`GET /summary (sem date) → ${semDate.status} (esperado 400)`, semDate.status === 400);
-
-  const semDep = await req("GET", `/summary?date=${TEST_DATE}`);
-  mostrarResultado(`GET /summary (sem dependentId) → ${semDep.status} (esperado 400)`, semDep.status === 400);
-}
-
-// ============================================================
-// CASAL — tarefas
-// ============================================================
-async function testCasalTarefas() {
-  titulo("CASAL — Tarefas (CoupleTask)");
-
-  // CREATE completo
-  const nova = {
-    text: "Lavar a louça — teste",
-    owner: "Eu",
-    priority: "alta",
-    due: TEST_DATE,
-    note: "criada pelo teste",
-  };
-  const post = await req("POST", "/casal", nova);
-  const criadoOk =
-    post.status === 201 &&
-    post.data?.id &&
-    post.data.text === nova.text &&
-    post.data.owner === "Eu" &&
-    post.data.priority === "alta" &&
-    post.data.done === false;
-  mostrarResultado(`POST /casal → ${post.status}`, criadoOk, post.data);
-  const id = post.data?.id;
-
-  // CREATE só com texto
-  const soTexto = await req("POST", "/casal", { text: "Só texto" });
-  const soTextoOk =
-    soTexto.status === 201 &&
-    soTexto.data?.owner === "Qualquer um" &&
-    soTexto.data?.priority === "media" &&
-    soTexto.data?.done === false;
-  mostrarResultado(`POST /casal (só text) → ${soTexto.status}`, soTextoOk);
-  const idSoTexto = soTexto.data?.id;
-
-  // Sem text → 400
-  const semText = await req("POST", "/casal", { owner: "Eu" });
-  mostrarResultado(`POST /casal (sem text) → ${semText.status} (esperado 400)`, semText.status === 400);
-
-  // Text vazio → 400
-  const vazio = await req("POST", "/casal", { text: "   " });
-  mostrarResultado(`POST /casal (vazio) → ${vazio.status} (esperado 400)`, vazio.status === 400);
-
-  // GET
-  const get = await req("GET", "/casal");
-  mostrarResultado(
-    `GET /casal → ${get.status} (${get.data?.length ?? 0} itens)`,
-    get.status === 200 && Array.isArray(get.data)
-  );
-
-  // GET ?done=false
-  const getPending = await req("GET", "/casal?done=false");
-  mostrarResultado(
-    `GET /casal?done=false → ${getPending.status} (${getPending.data?.length ?? 0} itens)`,
-    getPending.status === 200 && getPending.data?.every((t) => t.done === false)
-  );
-
-  // GET ?done=true
-  const getDone = await req("GET", "/casal?done=true");
-  mostrarResultado(
-    `GET /casal?done=true → ${getDone.status} (${getDone.data?.length ?? 0} itens)`,
-    getDone.status === 200 && getDone.data?.every((t) => t.done === true)
-  );
-
-  // PUT done
-  if (id) {
-    const put = await req("PUT", `/casal?id=${id}`, { done: true });
-    mostrarResultado(
-      `PUT /casal done:true → ${put.status}`,
-      put.status === 200 && put.data?.done === true
-    );
+  let recordTypeId = null, customRecordId = null;
+  if (rt.status === 201) {
+    recordTypeId = rt.json.id;
+    const cr = await http("POST", "/custom-records", {
+      token: victim.token,
+      body: { typeId: recordTypeId, dependentId: dep.id, data: { valor: 37 }, timestamp: ts, date: today },
+    });
+    if (cr.status === 201) customRecordId = cr.json.id;
   }
+  line(I.ok, C.green, "vítima: record-type + custom", `${!!recordTypeId} / ${!!customRecordId}`);
 
-  // PUT text/priority
-  if (id) {
-    const put2 = await req("PUT", `/casal?id=${id}`, { text: "Louça lavada", priority: "baixa" });
-    mostrarResultado(
-      `PUT /casal text/priority → ${put2.status}`,
-      put2.status === 200 && put2.data?.text === "Louça lavada" && put2.data?.priority === "baixa"
-    );
-  }
+  // Task + couple-data
+  const task = await http("POST", "/casal", { token: victim.token, body: { text: `VÍTIMA task ${RUN_ID}` } });
+  const taskId = task.status === 201 ? task.json.id : null;
+  line(I.ok, C.green, "vítima: task", taskId ? taskId.slice(0, 12) + "…" : "falhou");
 
-  // PUT sem id → 400
-  const putSemId = await req("PUT", "/casal", { done: true });
-  mostrarResultado(`PUT /casal (sem id) → ${putSemId.status} (esperado 400)`, putSemId.status === 400);
+  // Invite-link da vítima
+  const il = await http("POST", "/couple/invite-link", { token: victim.token, body: { expiresInHours: 24, maxUses: 1 } });
+  const inviteToken = il.status === 201 ? il.json.token : null;
+  line(I.ok, C.green, "vítima: invite-link", inviteToken ? inviteToken.slice(0, 12) + "…" : "falhou");
 
-  // DELETE
-  if (id) {
-    const del = await req("DELETE", `/casal?id=${id}`);
-    mostrarResultado(
-      `DELETE /casal?id=... → ${del.status}`,
-      del.status === 200 && del.data?.deleted === true
-    );
-  }
-  if (idSoTexto) await req("DELETE", `/casal?id=${idSoTexto}`);
+  // Notificação: cria uma notificação "de teste" endereçada à vítima
+  // Precisamos de um remetente com casal. Atacante B pode convidar a vítima.
+  let notifId = null;
+  const notif = await http("POST", "/couple/invite", {
+    token: attackerB.token,
+    body: { email: victim.email },
+  });
+  if (notif.status === 201) notifId = notif.json.notification.id;
+  line(I.ok, C.green, "notificação pendente (para a vítima)", notifId ? notifId.slice(0, 12) + "…" : "n/a");
 
-  // DELETE sem id → 400
-  const delSemId = await req("DELETE", "/casal");
-  mostrarResultado(`DELETE /casal (sem id) → ${delSemId.status} (esperado 400)`, delSemId.status === 400);
-}
-
-// ============================================================
-// CASAL — dados genéricos
-// ============================================================
-async function testCasalData() {
-  titulo("CASAL — Dados genéricos (CoupleData)");
-
-  // GET key que não existe → { key, value: null }
-  const getVazio = await req("GET", "/casal/data?key=mimos");
-  const getVazioOk = getVazio.status === 200 && getVazio.data?.key === "mimos" && getVazio.data?.value === null;
-  mostrarResultado(`GET /casal/data?key=mimos (vazio) → ${getVazio.status}`, getVazioOk, getVazio.data);
-
-  // PUT mimos
-  const mimosPayload = {
-    value: {
-      historico: [{ data: TEST_DATE, mimo: "Café na cama", para: "Lais" }],
-      custom: ["Massagem nos pés", "Bilhete de amor"],
+  return {
+    attackerA,
+    attackerB: { ...attackerB, coupleId: attackerBCoupleId, dep: attackerBDep },
+    victim: {
+      ...victim,
+      coupleId: victimCoupleId,
+      dep,
+      records,
+      recordTypeId,
+      customRecordId,
+      taskId,
+      inviteToken,
+      notifId,
     },
   };
-  const put = await req("PUT", "/casal/data?key=mimos", mimosPayload);
-  const putOk =
-    put.status === 200 &&
-    put.data?.key === "mimos" &&
-    put.data?.value?.historico?.length === 1 &&
-    put.data?.value?.custom?.length === 2;
-  mostrarResultado(`PUT /casal/data?key=mimos → ${put.status}`, putOk, put.data);
-
-  // GET de volta
-  const get = await req("GET", "/casal/data?key=mimos");
-  const getOk =
-    get.status === 200 && get.data?.value?.historico?.[0]?.mimo === "Café na cama";
-  mostrarResultado(`GET /casal/data?key=mimos → ${get.status}`, getOk, get.data);
-
-  // PUT planos
-  const putPlanos = await req("PUT", "/casal/data?key=planos", {
-    value: [
-      { id: "p1", nome: "Conhecer Pipa", categoria: "viagem", feito: false },
-      { id: "p2", nome: "Jantar italiano", categoria: "date", feito: true },
-    ],
-  });
-  mostrarResultado(
-    `PUT /casal/data?key=planos → ${putPlanos.status}`,
-    putPlanos.status === 200 && putPlanos.data?.value?.length === 2
-  );
-
-  // PUT metas
-  const putMetas = await req("PUT", "/casal/data?key=metas", {
-    value: [{ id: "m1", nome: "Economizar", progresso: 45, prazo: "2027-03-01" }],
-  });
-  mostrarResultado(
-    `PUT /casal/data?key=metas → ${putMetas.status}`,
-    putMetas.status === 200 && putMetas.data?.value?.[0]?.progresso === 45
-  );
-
-  // PUT checkins
-  const putCheckins = await req("PUT", "/casal/data?key=checkins", {
-    value: [{ data: TEST_DATE, quem: "João", humor: 5, nota: "Dia leve" }],
-  });
-  mostrarResultado(
-    `PUT /casal/data?key=checkins → ${putCheckins.status}`,
-    putCheckins.status === 200 && putCheckins.data?.value?.length === 1
-  );
-
-  // GET sem key → 400
-  const semKey = await req("GET", "/casal/data");
-  mostrarResultado(`GET /casal/data (sem key) → ${semKey.status} (esperado 400)`, semKey.status === 400);
-
-  // GET key inválida → 400
-  const keyInvalida = await req("GET", "/casal/data?key=foobar");
-  mostrarResultado(`GET /casal/data?key=foobar → ${keyInvalida.status} (esperado 400)`, keyInvalida.status === 400);
-
-  // PUT sem value → 400
-  const semValue = await req("PUT", "/casal/data?key=mimos", {});
-  mostrarResultado(`PUT /casal/data (sem value) → ${semValue.status} (esperado 400)`, semValue.status === 400);
-
-  // PUT key inválida → 400
-  const putKeyInv = await req("PUT", "/casal/data?key=foobar", { value: {} });
-  mostrarResultado(`PUT /casal/data?key=foobar → ${putKeyInv.status} (esperado 400)`, putKeyInv.status === 400);
 }
 
-// ============================================================
-// 404
-// ============================================================
-async function test404() {
-  titulo("404 — rota inexistente");
-  const { status, data } = await req("GET", "/rota-que-nao-existe");
-  mostrarResultado(`GET /rota-que-nao-existe → ${status} (esperado 404)`, status === 404, data);
-}
+// ============================================================================
+// CASO 1 — IDENTIDADE
+// ============================================================================
+async function case1_identity(ctx) {
+  section("🔑", "CASO 1 — Identidade", "tokens válidos, papéis corretos");
 
-// ============================================================
-// RUNNER
-// ============================================================
-async function main() {
-  console.log("");
-  console.log(`${c.cyan}${c.bold}╔══════════════════════════════════════════════════════╗${c.reset}`);
-  console.log(`${c.cyan}${c.bold}║  🧪 testRotas.js — testando API                      ║${c.reset}`);
-  console.log(`${c.cyan}${c.bold}║  ➜  ${BASE.padEnd(46)}║${c.reset}`);
-  console.log(`${c.cyan}${c.bold}╚══════════════════════════════════════════════════════╝${c.reset}`);
+  const results = [];
 
-  try {
-    const ping = await fetch(BASE + "/");
-    if (!ping.ok && ping.status !== 500) throw new Error("Servidor respondeu " + ping.status);
-  } catch (e) {
-    console.log("");
-    console.log(`${c.red}❌ Não consegui conectar em ${BASE}${c.reset}`);
-    console.log(`   ${c.dim}(${e.message})${c.reset}`);
-    process.exit(1);
+  // A e B têm tokens válidos
+  for (const [tag, u] of [["A", ctx.attackerA], ["B", ctx.attackerB], ["V", ctx.victim]]) {
+    const r = await http("GET", "/auth/me", { token: u.token });
+    const ok = r.status === 200 && r.json?.user?.id === u.id;
+    results.push({ who: tag, kind: "identity", ok, status: r.status });
+    line(ok ? I.ok : I.cross, ok ? C.green : C.red, `${tag} token válido → /auth/me`, `HTTP ${r.status}`);
   }
 
-  try {
-    await testHealth();
-    await testAuth();
-    await testCouple();
-    await testInviteFlow();
-    await testNotifRejectCancel();
-    await testDependent();
-    await testRegistros();
-    await testSummary();
-    await testCasalTarefas();
-    await testCasalData();
-    await test404();
-  } catch (e) {
-    console.log("");
-    console.log(`${c.red}❌ Erro inesperado: ${e.message}${c.reset}`);
-    console.error(e);
-  }
+  // A não tem casal
+  const meA = await http("GET", "/auth/me", { token: ctx.attackerA.token });
+  const aNoCouple = meA.json?.user?.coupleId === null;
+  results.push({ who: "A", kind: "no-couple", ok: aNoCouple, status: meA.status });
+  line(aNoCouple ? I.ok : I.cross, aNoCouple ? C.green : C.red,
+       "atacante A: coupleId = null", `coupleId=${meA.json?.user?.coupleId}`);
 
-  console.log("");
-  console.log(`${c.magenta}${c.bold}━━━ Resultado ━━━${c.reset}`);
-  console.log(`  ${c.green}✔ Passou: ${passou}${c.reset}`);
-  console.log(`${falhou > 0 ? c.red : c.green}  ✘ Falhou: ${falhou}${c.reset}`);
-  console.log("");
+  // B tem casal próprio, diferente do da vítima
+  const meB = await http("GET", "/auth/me", { token: ctx.attackerB.token });
+  const bHasOwnCouple = meB.json?.user?.coupleId === ctx.attackerB.coupleId;
+  const bNotVictim = meB.json?.user?.coupleId !== ctx.victim.coupleId;
+  line(bHasOwnCouple && bNotVictim ? I.ok : I.cross,
+       bHasOwnCouple && bNotVictim ? C.green : C.red,
+       "atacante B: casal próprio ≠ vítima", `coupleId=${meB.json?.user?.coupleId?.slice(0, 12)}…`);
+  results.push({ who: "B", kind: "own-couple", ok: bHasOwnCouple && bNotVictim });
 
-  process.exit(falhou === 0 ? 0 : 1);
+  return results;
 }
 
-main();
+// ============================================================================
+// CASO 2 — PERMISSÃO (IDOR/BOLA)
+// ============================================================================
+async function case2_idor(ctx, matrix) {
+  section("🚫", "CASO 2 — Autorização (IDOR/BOLA)", "atacantes tentam acessar recursos da vítima");
+
+  const results = [];
+
+  for (const entry of matrix) {
+    if (entry.skip) {
+      results.push({ id: entry.id, kind: entry.kind, status: "SKIP", reason: entry.skip });
+      line(I.skip, C.gray, entry.label, `SKIP — ${entry.skip}`);
+      continue;
+    }
+    const classify = entry.classify || "BLOCK";   // BLOCK | BY_DESIGN | SIMULATED
+    const { method, path, body } = entry.build(ctx);
+    const headers = entry.headers || {};
+
+    for (const who of ["A", "B"]) {
+      const attacker = who === "A" ? ctx.attackerA : ctx.attackerB;
+      const r = await http(method, path, { token: attacker.token, body, headers });
+
+      let verdict;
+      if (classify === "BY_DESIGN") {
+        // Esperado 200. Se der 200 → OK (público). Se der 4xx → INFO.
+        verdict = r.status === 200 ? "OK" : "INFO";
+      } else if (classify === "SIMULATED") {
+        verdict = "SIMULATED";
+      } else {
+        if (entry.expected.includes(r.status)) verdict = "OK";
+        else if (r.status >= 200 && r.status < 300) verdict = "VULN";
+        else verdict = "UNEXPECTED";
+      }
+
+      results.push({
+        id: entry.id, kind: entry.kind, who,
+        method, path, body: body || null,
+        status: r.status, verdict,
+        responseBody: r.json || null,
+      });
+
+      const icon = verdict === "VULN" ? I.bug
+                 : verdict === "OK" ? I.ok
+                 : verdict === "SKIP" ? I.skip
+                 : I.warn;
+      const color = verdict === "VULN" ? C.red
+                  : verdict === "OK" ? C.green
+                  : C.yellow;
+      const tag = `[${who}] ${pad(entry.label, 42)}`;
+      console.log(`  ${color}${icon}${C.reset} ${tag} ${color}HTTP ${padLeft(r.status, 3)}${C.reset} ${C.dim}${verdict}${C.reset}`);
+    }
+  }
+
+  return results;
+}
+
+// ============================================================================
+// CASO 3 — TOKEN
+// ============================================================================
+function tamperJwt(token) {
+  // Troca o payload por um userId falso, mantém o header e a assinatura originais
+  try {
+    const [h, p, s] = token.split(".");
+    const payload = JSON.parse(Buffer.from(p, "base64url").toString("utf8"));
+    payload.userId = "forjado-" + crypto.randomBytes(4).toString("hex");
+    const newP = Buffer.from(JSON.stringify(payload)).toString("base64url");
+    return `${h}.${newP}.${s}`;
+  } catch {
+    return token;
+  }
+}
+
+async function case3_token(ctx) {
+  section("🔒", "CASO 3 — Token", "forjado, adulterado, expirado, cross-user");
+
+  const results = [];
+  const add = (label, expected, r, classify = "BLOCK") => {
+    let verdict;
+    if (classify === "SIMULATED") verdict = "SIMULATED";
+    else if (expected.includes(r.status)) verdict = "OK";
+    else if (r.status >= 200 && r.status < 300) verdict = "VULN";
+    else verdict = "UNEXPECTED";
+    results.push({ label, status: r.status, verdict });
+    const icon = verdict === "VULN" ? I.bug : verdict === "OK" ? I.ok : I.warn;
+    const color = verdict === "VULN" ? C.red : verdict === "OK" ? C.green : C.yellow;
+    console.log(`  ${color}${icon}${C.reset} ${pad(label, 48)} ${color}HTTP ${padLeft(r.status, 3)}${C.reset} ${C.dim}${verdict}${C.reset}`);
+  };
+
+  // 3a — token com userId adulterado, assinatura original
+  const tampered = tamperJwt(ctx.attackerA.token);
+  const r3a = await http("GET", "/auth/me", { token: tampered });
+  add("3a token adulterado (userId falso)", [401], r3a);
+
+  // 3b — token assinado com outro secret (JWT bem formado, assinatura inválida)
+  const fake = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ4IiwiaWF0IjoxNzAwMDAwMDAwfQ.xxx";
+  const r3b = await http("GET", "/auth/me", { token: fake });
+  add("3b token assinado com outro secret", [401], r3b);
+
+  // 3c — Header Authorization malformado
+  const r3c = await http("GET", "/auth/me", { headers: { Authorization: "NotBearer abc" } });
+  add("3c Authorization malformado", [401], r3c);
+
+  // 3d — Sem header
+  const r3d = await http("GET", "/auth/me");
+  add("3d sem Authorization", [401], r3d);
+
+  // 3e — token da vítima usado em outro "cliente" (simulação de credencial roubada)
+  const r3e = await http("GET", "/auth/me", { token: ctx.victim.token });
+  add("3e token da vítima (simulação de roubo)", [200], r3e, "SIMULATED");
+
+  return results;
+}
+
+// ============================================================================
+// RELATÓRIO
+// ============================================================================
+function report(ctx, c1, c2, c3) {
+  const t0 = Date.now();
+
+  // Agrega
+  const all = [...c1, ...c2, ...c3];
+  const vulns = c2.filter((r) => r.verdict === "VULN");
+  const oks = c2.filter((r) => r.verdict === "OK");
+  const byDesign = c2.filter((r) => r.verdict === "OK" && r.classify === "BY_DESIGN");
+  const skips = c2.filter((r) => r.verdict === "SKIP");
+  const unexpected = c2.filter((r) => r.verdict === "UNEXPECTED");
+
+  console.log("");
+  console.log(`${C.bold}${C.cyan}╔${"═".repeat(76)}╗${C.reset}`);
+  console.log(`${C.bold}${C.cyan}║${C.reset}  ${C.bold}${C.white}${pad("RELATÓRIO DE AUTORIZAÇÃO", 74)}${C.reset}${C.bold}${C.cyan}║${C.reset}`);
+  console.log(`${C.bold}${C.cyan}╚${"═".repeat(76)}╝${C.reset}`);
+
+  console.log("");
+  console.log(`  ${C.bold}Contagens${C.reset}`);
+  console.log(`  ${hline()}`);
+  line(I.ok, C.green, "Bloqueadas corretamente", c2.filter(r => r.verdict === "OK").length);
+  line(I.bug, C.red, "VAZAMENTOS (recursos de outro)", vulns.length);
+  line(I.warn, C.yellow, "Respostas inesperadas", unexpected.length);
+  line(I.skip, C.gray, "Não testadas", skips.length);
+
+  if (vulns.length) {
+    console.log("");
+    console.log(`  ${C.bold}${C.red}Vulnerabilidades confirmadas${C.reset}`);
+    console.log(`  ${hline()}`);
+    for (const v of vulns) {
+      console.log(`  ${C.red}${I.bug}${C.reset} [${v.who}] ${v.method} ${v.path}`);
+      console.log(`     ${C.dim}status=${v.status} body=${trunc(JSON.stringify(v.responseBody), 120)}${C.reset}`);
+    }
+  }
+
+  if (unexpected.length) {
+    console.log("");
+    console.log(`  ${C.bold}${C.yellow}Respostas inesperadas (não-vuln, mas fora do esperado)${C.reset}`);
+    console.log(`  ${hline()}`);
+    for (const u of unexpected) {
+      console.log(`  ${C.yellow}${I.warn}${C.reset} [${u.who}] ${u.method} ${u.path} → ${u.status}`);
+    }
+  }
+
+  if (skips.length) {
+    console.log("");
+    console.log(`  ${C.bold}${C.gray}Não testadas${C.reset}`);
+    console.log(`  ${hline()}`);
+    for (const s of skips) {
+      console.log(`  ${C.gray}${I.skip}${C.reset} ${s.id} — ${s.reason}`);
+    }
+  }
+
+  const verdict = vulns.length === 0 ? "SEGURO" : "VULNERÁVEL";
+  const bg = vulns.length === 0 ? C.bgGreen : C.bgRed;
+  console.log("");
+  console.log(`  ${bg}${C.bold}${C.white}  RESULTADO: ${verdict}  ${C.reset}`);
+  console.log("");
+
+  const out = {
+    runId: RUN_ID,
+    startedAt: new Date(t0).toISOString(),
+    baseUrl: BASE_URL,
+    allowDelete: FLAGS.allowDelete,
+    setup: {
+      attackerA: { id: ctx.attackerA.id, email: ctx.attackerA.email },
+      attackerB: { id: ctx.attackerB.id, email: ctx.attackerB.email, coupleId: ctx.attackerB.coupleId },
+      victim: {
+        id: ctx.victim.id, email: ctx.victim.email, coupleId: ctx.victim.coupleId,
+        dependentId: ctx.victim.dep.id,
+        records: ctx.victim.records,
+        recordTypeId: ctx.victim.recordTypeId,
+        customRecordId: ctx.victim.customRecordId,
+        taskId: ctx.victim.taskId,
+        inviteToken: ctx.victim.inviteToken,
+        notifId: ctx.victim.notifId,
+      },
+    },
+    results: { case1: c1, case2: c2, case3: c3 },
+    summary: {
+      blocked: c2.filter(r => r.verdict === "OK").length,
+      vulnerabilities: vulns.length,
+      unexpected: unexpected.length,
+      skipped: skips.length,
+      byDesign: byDesign.length,
+      verdict,
+    },
+  };
+  fs.writeFileSync(REPORT_PATH, JSON.stringify(out, null, 2));
+  console.log(`  ${C.green}${I.ok}${C.reset} Relatório JSON: ${C.bold}${REPORT_PATH}${C.reset}`);
+  console.log("");
+
+  process.exit(vulns.length > 0 ? 1 : 0);
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+(async () => {
+  console.clear?.();
+  title();
+
+  let ctx, c1 = [], c2 = [], c3 = [];
+  try {
+    ctx = await setup();
+    c1 = await case1_identity(ctx);
+    c2 = await case2_idor(ctx, MATRIX);
+    c3 = await case3_token(ctx);
+  } catch (e) {
+    console.log(`\n${C.red}${C.bold}💥 Erro fatal:${C.reset} ${e.message}`);
+    if (e.stack) console.log(`${C.dim}${e.stack.split("\n").slice(1, 4).join("\n")}${C.reset}`);
+  } finally {
+    if (ctx) report(ctx, c1, c2, c3);
+    else process.exit(2);
+  }
+})();

@@ -1,13 +1,17 @@
 // ============================================================
-// config.js — variáveis de ambiente, constantes, Prisma singleton
+// config.js — variáveis de ambiente e constantes
 // ------------------------------------------------------------
-// 🔴 MUDOU: singleton do Prisma SEMPRE guardado em globalThis.
-// ✅ NOVO:  instrumentação do Prisma + hooks globais.
+// ✅ MUDOU: PrismaClient agora vive em ./prisma.js (com retry
+//           inteligente + anti-zumbi). Aqui só reexportamos
+//           pra manter compatibilidade com imports antigos.
 // ============================================================
 
-import { PrismaClient } from "@prisma/client";
 import { instrumentPrisma, installGlobalHooks, log } from "./registerlogs.js";
 
+// ✅ Reexporta o Prisma e helpers do novo módulo
+export { prisma, safeQuery, safeTransaction, warmupDb, keepAlive } from "./prisma.js";
+
+// ---------- ENV ----------
 export const ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
   JWT_SECRET: process.env.JWT_SECRET || "dev-secret-troque-em-prod",
@@ -23,34 +27,27 @@ if (ENV.NODE_ENV === "production" && ENV.JWT_SECRET === "dev-secret-troque-em-pr
   console.error("⚠️  JWT_SECRET não definida em produção!");
 }
 
-// 🔴 CORREÇÃO H1: SEMPRE guarda em globalThis (inclusive em produção)
-const globalForPrisma = globalThis;
+// ---------- INSTRUMENTAÇÃO ÚNICA ----------
+// Faz uma vez por processo: instrumenta o Prisma + instala hooks.
+import("./prisma.js").then(({ prisma }) => {
+  if (!globalThis.__promax_prisma_instrumented) {
+    globalThis.__promax_prisma_instrumented = true;
+    instrumentPrisma(prisma);
+    installGlobalHooks();
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: [
-      { emit: "event", level: "error" },
-      { emit: "event", level: "warn" },
-    ],
-    datasources: { db: { url: process.env.DATABASE_URL } },
-  });
+    log.info("config.prisma.ready", {
+      nodeVersion: process.version,
+      env: ENV.NODE_ENV,
+      region: process.env.VERCEL_REGION || null,
+      hasPooler: /pooled|pooler|pgbouncer/i.test(ENV.DATABASE_URL || ""),
+      isProduction: ENV.NODE_ENV === "production",
+    });
+  }
+}).catch((e) => {
+  console.error("[config] falha ao instrumentar Prisma:", e.message);
+});
 
-if (!globalForPrisma.__promax_prisma_instrumented) {
-  globalForPrisma.__promax_prisma_instrumented = true;
-  globalForPrisma.prisma = prisma;
-  instrumentPrisma(prisma);
-  installGlobalHooks();
-
-  log.info("config.prisma.ready", {
-    nodeVersion: process.version,
-    env: ENV.NODE_ENV,
-    region: process.env.VERCEL_REGION || null,
-    hasPooler: /pooled|pooler|pgbouncer/i.test(ENV.DATABASE_URL || ""),
-    isProduction: ENV.NODE_ENV === "production",
-  });
-}
-
+// ---------- CONSTANTES DE DOMÍNIO ----------
 export const CASAL_DATA_KEYS = ["mimos", "planos", "metas", "checkins"];
 export const PRIORITIES = ["baixa", "media", "alta"];
 export const PEE_SIZES = ["pequeno", "medio", "grande"];

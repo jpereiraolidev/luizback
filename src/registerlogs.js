@@ -9,10 +9,10 @@
 //   - Erros não tratados (uncaughtException, unhandledRejection)
 //   - Amostragem configurável para não explodir custo
 //
-// ✅ NOVO (v2):
-//   - keepAlive(): ping ao Postgres com timeout curto, usado
-//     por cron externo (cron-job.org, UptimeRobot) para impedir
-//     que o banco serverless free hiberne.
+// ✅ MUDOU (v3):
+//   - `keepAlive` foi MOVIDA para ./prisma.js.
+//     Aqui só reexportamos para compatibilidade com imports antigos.
+//     Isso centraliza a lógica de retry/reconnect no módulo prisma.
 //
 // Modos de saída (env LOG_MODE):
 //   stdout   → console.log estruturado (Vercel captura; sem persistência)
@@ -24,6 +24,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+
+// ✅ Reexporta keepAlive do módulo prisma (evita duplicação e
+// mantém imports antigos funcionando: `import { keepAlive } from "./registerlogs.js"`)
+export { keepAlive } from "./prisma.js";
 
 // ---------- CONFIG ----------
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
@@ -74,7 +78,7 @@ let dbSink = null;
 async function initDbSink() {
   if (dbSink !== null) return dbSink;
   try {
-    const mod = await import("./config.js");
+    const mod = await import("./prisma.js");
     dbSink = mod.prisma;
   } catch {
     dbSink = false;
@@ -335,46 +339,6 @@ export function installGlobalHooks() {
   process.on("exit", (code) => {
     log.info("process.exit", { code, uptime: Math.round(process.uptime()) });
   });
-}
-
-// ============================================================
-// KEEP-ALIVE DO BANCO
-// ============================================================
-// ✅ NOVO — ping ao Postgres com timeout de 5s.
-// Usado por:
-//   - cron externo (cron-job.org, UptimeRobot)
-//   - rota GET /__health/db
-// Impede que bancos serverless free (Neon, Supabase, Prisma Postgres)
-// hibernem após minutos de inatividade.
-export async function keepAlive() {
-  const t0 = Date.now();
-  try {
-    const mod = await import("./config.js");
-    const prisma = mod.prisma;
-
-    await Promise.race([
-      prisma.$queryRaw`SELECT 1`,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("KEEPALIVE_TIMEOUT")), 5000)
-      ),
-    ]);
-
-    return {
-      ok: true,
-      latencyMs: Date.now() - t0,
-      instanceId: INSTANCE.instanceId,
-      ts: new Date().toISOString(),
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e.code || e.name,
-      message: String(e.message || e).slice(0, 200),
-      latencyMs: Date.now() - t0,
-      instanceId: INSTANCE.instanceId,
-      ts: new Date().toISOString(),
-    };
-  }
 }
 
 // ============================================================

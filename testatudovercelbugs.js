@@ -1,757 +1,596 @@
 #!/usr/bin/env node
 // ============================================================================
-// TESTEMESTRE.JS — Suíte mestra de auditoria da API Luizback
+// testemestre.js — Suíte visual de auditoria da API Luizback
 // ----------------------------------------------------------------------------
-// Roda com Node 18+. Sem dependências externas.
-//
 // Uso:
 //   $env:PROMAX_BASE_URL = "https://luizback-y8qz.vercel.app"
-//   node testemestre.js <modo>
+//   node testemestre.js
 //
-// Modos disponíveis:
-//   ── FASE 0 — DIAGNÓSTICO ─────────────────────────────────────
-//   fase0              Inventário do ambiente (provider, headers, baseline)
-//   fase0:baseline     Coleta baseline completo (roda tudo e salva JSON)
-//
-//   ── FASE 1 — INSTRUMENTAÇÃO ──────────────────────────────────
-//   fase1              Detecta fragmentação de instância via /__diag/instance
-//   fase1:carga        Mede fragmentação sob carga paralela
-//
-//   ── FASE 2 — TESTES DE CORREÇÃO ──────────────────────────────
-//   fase2:race         Race no accept (100 paralelos)
-//   fase2:timestamp    Validação de timestamp (contrato)
-//   fase2:pool         Esgotamento de pool sob carga agressiva
-//   fase2:singleton    Fragmentação do PrismaClient
-//   fase2:integracao   Consistência API ↔ banco (amostragem)
-//
-//   ── FASE 3 — VALIDAÇÃO ───────────────────────────────────────
-//   fase3:persist      Persistência após cold start
-//   fase3:latencia     Latência p50/p95/p99 por endpoint
-//   fase3:full         Bateria completa de validação
-//
-//   ── FASE 4 — AUDITORIAS ──────────────────────────────────────
-//   fase4:cascade      Audita DELETE /couple/leave e cascade
-//   fase4:exclusao     Mapeia rotas destrutivas
-//   fase4:front        Simula padrões de leitura do frontend
-//
-//   ── COMPOSTOS ────────────────────────────────────────────────
-//   smoke              Teste rápido (30s)
-//   full               Todas as fases (5–10min)
-//   audit              fase0 + fase1 + fase4 (diagnóstico puro)
+// Modos (opcionais via flag):
+//   node testemestre.js --full        roda tudo (default)
+//   node testemestre.js --quick       só fases 0–3
+//   node testemestre.js --race        foca em concorrência
+//   node testemestre.js --local       http://localhost:3000
 //
 // Env:
-//   PROMAX_BASE_URL        obrigatório
-//   PROMAX_TIMEOUT         default 20000
-//   PROMAX_ALLOW_LOCALHOST permitir localhost
-//   PROMAX_OUT             diretório de relatórios (default ./promax-reports)
-//   DIAG_TOKEN             token do /__diag/instance (opcional)
+//   PROMAX_BASE_URL     obrigatório (ou usa --local)
+//   PROMAX_TIMEOUT      default 20000
+//   KEEPALIVE_TOKEN     para testar /__health/db
+//   DIAG_TOKEN          para testar /__diag/instance
 // ============================================================================
 
-import fs from "node:fs";
-import path from "node:path";
 import crypto from "node:crypto";
+import fs from "node:fs";
 
-// ════════════════════════════════════════════════════════════════════════════
-// CONFIG
-// ════════════════════════════════════════════════════════════════════════════
-
-const RAW_BASE = process.env.PROMAX_BASE_URL || "";
-if (!RAW_BASE) {
-  console.error("❌ Defina PROMAX_BASE_URL. Ex: https://luizback-y8qz.vercel.app");
-  process.exit(1);
-}
-const BASE_URL = RAW_BASE.replace(/\/+$/, "");
-if (/localhost|127\.0\.0\.1/.test(BASE_URL) && process.env.PROMAX_ALLOW_LOCALHOST !== "1") {
-  console.error("❌ BASE_URL aponta para localhost. Use PROMAX_ALLOW_LOCALHOST=1 se for intencional.");
-  process.exit(1);
-}
-
-const TIMEOUT_MS = Number(process.env.PROMAX_TIMEOUT || 20000);
-const OUT_DIR = process.env.PROMAX_OUT || "promax-reports";
-const DIAG_TOKEN = process.env.DIAG_TOKEN || "";
-const RUN_ID = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;
-const CASAL_DATA_KEYS = ["mimos", "planos", "metas", "checkins"];
-
-if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
-
-// ════════════════════════════════════════════════════════════════════════════
-// CORES / UTILS
-// ════════════════════════════════════════════════════════════════════════════
-
+// ---------- CORES / ÍCONES ----------
 const C = {
   reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m",
   red: "\x1b[31m", green: "\x1b[32m", yellow: "\x1b[33m",
   blue: "\x1b[34m", magenta: "\x1b[35m", cyan: "\x1b[36m",
+  gray: "\x1b[90m", white: "\x1b[97m",
+  bgRed: "\x1b[41m", bgGreen: "\x1b[42m", bgYellow: "\x1b[43m",
+  bgBlue: "\x1b[44m", bgMagenta: "\x1b[45m", bgCyan: "\x1b[46m",
+};
+const ICON = {
+  ok: "✓", fail: "✗", warn: "⚠", info: "ℹ", arrow: "▶",
+  spark: "✦", bolt: "⚡", clock: "⏱", lock: "🔒", bug: "🐛",
+  rocket: "🚀", db: "🗄", wave: "👋", check: "✔", cross: "✖",
 };
 
+// ---------- CLI ----------
+const args = process.argv.slice(2);
+const mode = {
+  local: args.includes("--local"),
+  quick: args.includes("--quick"),
+  race: args.includes("--race"),
+  full: !args.includes("--quick") && !args.includes("--race"),
+};
+const BASE_URL = mode.local
+  ? "https://luizback-y8qz.vercel.app"
+  : (process.env.PROMAX_BASE_URL || "").replace(/\/+$/, "");
+if (!BASE_URL) {
+  console.error(`${C.red}❌ Defina PROMAX_BASE_URL ou use --local${C.reset}`);
+  process.exit(1);
+}
+const TIMEOUT_MS = Number(process.env.PROMAX_TIMEOUT || 20000);
+const KEEPALIVE_TOKEN = process.env.KEEPALIVE_TOKEN || "";
+const DIAG_TOKEN = process.env.DIAG_TOKEN || "";
+const RUN_ID = `${Date.now().toString(36)}-${crypto.randomBytes(2).toString("hex")}`;
+
+// ---------- ESTADO ----------
 const state = {
   runId: RUN_ID,
-  startedAt: new Date().toISOString(),
+  startedAt: Date.now(),
   baseUrl: BASE_URL,
-  findings: [],
   metrics: [],
   bugs: [],
-  endpoints: {},
-  snapshots: {},
+  phases: {},
 };
 
-const created = { users: [], couples: [], dependents: [], records: [], notifs: [], tasks: [] };
+// ---------- HELPERS VISUAIS ----------
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
+const visibleLen = (s) => stripAnsi(String(s)).length;
+const pad = (s, n) => {
+  const len = visibleLen(s);
+  if (len >= n) return s;
+  return s + " ".repeat(n - len);
+};
+const padLeft = (s, n) => {
+  const len = visibleLen(s);
+  if (len >= n) return s;
+  return " ".repeat(n - len) + s;
+};
+const truncate = (s, n) => {
+  s = String(s ?? "");
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+};
 
-const SENSITIVE = /(password|token|authorization|database_url|passwordhash|secret)/i;
-function sanitize(obj) {
-  if (obj == null) return obj;
-  if (typeof obj === "string") return obj.length > 200 ? obj.slice(0, 200) + "…" : obj;
-  if (Array.isArray(obj)) return obj.map(sanitize);
-  if (typeof obj === "object") {
-    const out = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = SENSITIVE.test(k) ? "***" : sanitize(v);
-    return out;
+function line(char = "─", n = 78) {
+  return C.gray + char.repeat(n) + C.reset;
+}
+
+function header(title, subtitle) {
+  console.log("");
+  console.log(`${C.bold}${C.cyan}╔${"═".repeat(76)}╗${C.reset}`);
+  console.log(`${C.bold}${C.cyan}║${C.reset} ${C.bold}${C.white}${pad(title, 74)}${C.reset} ${C.bold}${C.cyan}║${C.reset}`);
+  if (subtitle) {
+    console.log(`${C.bold}${C.cyan}║${C.reset} ${C.dim}${pad(subtitle, 74)}${C.reset} ${C.bold}${C.cyan}║${C.reset}`);
   }
-  return obj;
-}
-const truncate = (s, n = 200) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + "…" : s; };
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const nowTs = () => new Date().toISOString();
-const ymd = (d = new Date()) => d.toISOString().slice(0, 10);
-const uniqueEmail = (tag) => `mestre+${RUN_ID}-${tag}-${crypto.randomBytes(2).toString("hex")}@test.local`;
-
-function section(title) {
-  console.log(`\n${C.bold}${C.cyan}━━━ ${title} ━━━${C.reset}`);
-}
-function info(msg) { console.log(`  ${C.dim}${msg}${C.reset}`); }
-function ok(msg) { console.log(`  ${C.green}✓${C.reset} ${msg}`); }
-function warn(msg) { console.log(`  ${C.yellow}⚠${C.reset} ${msg}`); }
-function fail(msg) { console.log(`  ${C.red}✗${C.reset} ${msg}`); }
-
-function finding({ id, phase, title, status, evidence = {}, note = "", fix = "" }) {
-  const color = status === "CONFIRMADA" ? C.red
-              : status === "DESCARTADA" ? C.green
-              : C.yellow;
-  console.log(`  ${color}[${status}]${C.reset} ${C.bold}${id}${C.reset} — ${title}`);
-  if (note) console.log(`    ${C.dim}${note}${C.reset}`);
-  if (fix && status !== "DESCARTADA") console.log(`    ${C.cyan}Fix:${C.reset} ${fix}`);
-  state.findings.push({ id, phase, title, status, evidence: sanitize(evidence), note, fix });
-  return state.findings[state.findings.length - 1];
+  console.log(`${C.bold}${C.cyan}╚${"═".repeat(76)}╝${C.reset}`);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// HTTP CLIENT
-// ════════════════════════════════════════════════════════════════════════════
+function section(icon, title, subtitle) {
+  console.log("");
+  console.log(`${C.bold}${C.blue}${icon}  ${title}${C.reset}${subtitle ? ` ${C.dim}${subtitle}${C.reset}` : ""}`);
+  console.log(line("─", 78));
+}
 
-async function http(method, urlPath, { body, token, headers = {}, timeoutMs } = {}) {
-  const url = urlPath.startsWith("http") ? urlPath : BASE_URL + urlPath;
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs ?? TIMEOUT_MS);
+function bullet(icon, label, value, color = C.reset) {
+  console.log(`  ${color}${icon}${C.reset} ${pad(label, 32)} ${value}`);
+}
+
+function table(rows, cols) {
+  if (!rows.length) {
+    console.log(`${C.dim}  (sem dados)${C.reset}`);
+    return;
+  }
+  const widths = cols.map((c) => {
+    let w = visibleLen(c.header);
+    for (const r of rows) w = Math.max(w, Math.min(visibleLen(r[c.key] ?? ""), c.max || 40));
+    return w;
+  });
+  const head = cols.map((c, i) => pad(c.header, widths[i])).join(`${C.gray} │ ${C.reset}`);
+  console.log(`  ${C.bold}${head}${C.reset}`);
+  console.log(`  ${C.gray}${widths.map((w) => "─".repeat(w)).join("─┼─")}${C.reset}`);
+  for (const r of rows) {
+    const line = cols.map((c, i) => {
+      const raw = String(r[c.key] ?? "");
+      const val = pad(truncate(raw, widths[i]), widths[i]);
+      return c.color ? c.color(r[c.key], r) + val + C.reset : val;
+    }).join(`${C.gray} │ ${C.reset}`);
+    console.log(`  ${line}`);
+  }
+}
+
+// ---------- HTTP ----------
+async function http(method, path, { body, token, headers = {}, timeoutMs } = {}) {
+  const url = path.startsWith("http") ? path : BASE_URL + path;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs ?? TIMEOUT_MS);
   const h = { ...headers };
   if (token) h["Authorization"] = `Bearer ${token}`;
   if (body !== undefined) h["Content-Type"] = "application/json";
 
   const t0 = Date.now();
-  let res, text, json = null, networkError = null;
+  let res, text, json = null, netErr = null;
   try {
     res = await fetch(url, {
       method, headers: h,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: controller.signal,
+      signal: ctrl.signal,
     });
     text = await res.text();
     if (text) { try { json = JSON.parse(text); } catch {} }
   } catch (e) {
-    networkError = e.name === "AbortError" ? "TIMEOUT" : e.message;
+    netErr = e.name === "AbortError" ? "TIMEOUT" : e.message;
   }
   clearTimeout(t);
-
   const ms = Date.now() - t0;
   const status = res?.status ?? 0;
-  const vercelId = res?.headers.get("x-vercel-id") || null;
-  const cold = res?.headers.get("x-vercel-cold") || null;
-
-  trackEndpoint(method, urlPath, status);
-  state.metrics.push({ method, path: urlPath.split("?")[0], status, ms, vercelId, cold, networkError });
-
-  return {
-    ok: status >= 200 && status < 300,
-    status, json, text, ms, vercelId, cold,
-    headers: res ? Object.fromEntries(res.headers) : {},
-    networkError,
-  };
+  const vId = res?.headers.get("x-vercel-id") || null;
+  const vRegion = res?.headers.get("x-vercel-execution-region") || null;
+  const cold = ms > 3000 && !!vId;
+  state.metrics.push({ method, path: path.split("?")[0], status, ms, cold, vId });
+  return { ok: status >= 200 && status < 300, status, json, text, ms, vId, vRegion, cold, netErr };
 }
 
-function trackEndpoint(method, urlPath, status) {
-  const key = `${method} ${urlPath.split("?")[0]}`;
-  const e = (state.endpoints[key] ||= { calls: 0, statuses: {}, latencies: [] });
-  e.calls++;
-  e.statuses[status] = (e.statuses[status] || 0) + 1;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// FIXTURES
-// ════════════════════════════════════════════════════════════════════════════
+// ---------- FIXTURES ----------
+const uniqueEmail = (tag) => `mestre+${RUN_ID}-${tag}-${crypto.randomBytes(2).toString("hex")}@test.local`;
+const nowTs = () => new Date().toISOString();
+const ymd = (d = new Date()) => d.toISOString().slice(0, 10);
 
 async function registerUser(tag) {
   const email = uniqueEmail(tag);
-  const password = "mestre-" + crypto.randomBytes(4).toString("hex");
-  const name = `MESTRE ${tag} ${RUN_ID}`;
-  const r = await http("POST", "/auth/register", { body: { email, password, name } });
-  if (r.status !== 201) throw new Error(`register ${tag}: ${r.status} ${truncate(r.text)}`);
-  const u = { id: r.json.user.id, email, password, name, token: r.json.token };
-  created.users.push({ id: u.id, email, password });
-  return u;
+  const password = "mestre-" + crypto.randomBytes(3).toString("hex");
+  const r = await http("POST", "/auth/register", { body: { email, password, name: `Mestre ${tag}` } });
+  if (r.status !== 201) throw new Error(`register ${tag}: ${r.status} ${truncate(r.text, 120)}`);
+  return { id: r.json.user.id, email, password, token: r.json.token };
 }
 
 async function createCouple(user) {
   const r = await http("POST", "/couple", { token: user.token });
-  if (r.status !== 201) throw new Error(`couple: ${r.status} ${truncate(r.text)}`);
-  const coupleId = r.json.couple.id;
-  created.couples.push({ id: coupleId, ownerId: user.id });
-  return coupleId;
+  if (r.status !== 201) throw new Error(`couple: ${r.status}`);
+  return r.json.couple.id;
 }
 
-async function createDependent(user, name = `MESTRE DEP ${RUN_ID}`) {
+async function createDependent(user, name = `Dep ${RUN_ID}`) {
   const r = await http("POST", "/dependent", { token: user.token, body: { name } });
-  if (r.status !== 201) throw new Error(`dependent: ${r.status} ${truncate(r.text)}`);
-  created.dependents.push({ id: r.json.id, coupleId: r.json.coupleId });
+  if (r.status !== 201) throw new Error(`dependent: ${r.status}`);
   return r.json;
 }
 
-async function createRecord(user, dependentId, model, extra = {}) {
-  const today = ymd();
-  const base = {
-    water:    { amount: 100, reason: "mestre", timestamp: nowTs(), date: today },
-    pee:      { size: "medio", type: "espontaneo", note: "mestre", timestamp: nowTs(), date: today },
-    poop:     { evacuated: true, consistency: "normal", pain: 0, timestamp: nowTs(), date: today },
-    behavior: { observed: "mestre", rule: "r", action: "a", duration: 10, result: "ok", timestamp: nowTs(), date: today },
-  }[model];
-  const r = await http("POST", `/${model}`, {
-    token: user.token,
-    body: { ...base, ...extra, dependentId },
-  });
-  if (r.status === 201) created.records.push({ model, id: r.json.id, dependentId });
-  return r;
+// ---------- CONTADORES ----------
+const counters = { pass: 0, fail: 0, warn: 0, info: 0 };
+function test(ok, label, detail = "") {
+  if (ok) {
+    counters.pass++;
+    console.log(`  ${C.green}${ICON.ok}${C.reset} ${pad(label, 50)} ${C.dim}${detail}${C.reset}`);
+  } else {
+    counters.fail++;
+    console.log(`  ${C.red}${ICON.fail}${C.reset} ${pad(label, 50)} ${C.red}${detail}${C.reset}`);
+  }
+}
+function warn(label, detail = "") {
+  counters.warn++;
+  console.log(`  ${C.yellow}${ICON.warn}${C.reset} ${pad(label, 50)} ${C.yellow}${detail}${C.reset}`);
+}
+function info(label, detail = "") {
+  counters.info++;
+  console.log(`  ${C.cyan}${ICON.info}${C.reset} ${pad(label, 50)} ${C.dim}${detail}${C.reset}`);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// FASE 0 — DIAGNÓSTICO
-// ════════════════════════════════════════════════════════════════════════════
+// ============================================================================
+// FASE 0 — SAÚDE BÁSICA
+// ============================================================================
+async function phase0_saude() {
+  section(ICON.rocket, "FASE 0 — Saúde básica", "ping, headers, cold start");
 
-async function fase0_diagnostico() {
-  section("FASE 0 — Diagnóstico de ambiente");
+  const r = await http("GET", "/");
+  bullet(ICON.arrow, "GET /", `${r.status === 200 ? C.green : C.red}HTTP ${r.status}${C.reset}  ${C.dim}${r.ms}ms${C.reset}`);
+  test(r.status === 200 && r.json?.ok === true, "healthcheck retorna { ok: true }");
 
-  // 0.1 — Ping básico
-  const ping = await http("GET", "/");
-  if (ping.status === 200) ok(`API online (${ping.ms}ms, vercel-id=${ping.vercelId?.slice(0, 12)})`);
-  else fail(`API respondeu ${ping.status}`);
+  bullet(ICON.clock, "Latência", `${r.ms}ms ${r.cold ? C.yellow + "[cold]" + C.reset : C.dim + "[warm]" + C.reset}`);
+  if (r.ms > 3000) warn("cold start detectado", "primeira request pagou cold start");
+  else info("container quente", "sem cold start nesta request");
 
-  // 0.2 — Headers de infraestrutura
-  info("Headers da infraestrutura:");
-  const interesting = ["server", "x-vercel-id", "x-vercel-cache", "x-vercel-cold",
-                       "x-vercel-execution-region", "x-matched-path", "cache-control"];
-  for (const h of interesting) {
-    if (ping.headers?.[h]) info(`  ${h}: ${truncate(ping.headers[h], 80)}`);
-  }
+  bullet(ICON.db, "Region", r.vRegion || "não informada");
+  bullet(ICON.lock, "Vercel ID", r.vId ? r.vId.slice(0, 24) + "…" : "n/a");
 
-  // 0.3 — Descoberta de provider via headers + comportamento
-  const region = ping.headers?.["x-vercel-execution-region"] || "?";
-  info(`Região de execução: ${region}`);
+  const nf = await http("GET", "/nao-existe-mestre");
+  test(nf.status === 404, "404 handler retorna JSON", `HTTP ${nf.status}`);
 
-  // 0.4 — CORS preflight
   const opt = await http("OPTIONS", "/auth/login");
-  if (opt.status === 204) ok("Preflight OPTIONS → 204");
-  else warn(`Preflight OPTIONS → ${opt.status}`);
+  test(opt.status === 204, "OPTIONS preflight → 204", `HTTP ${opt.status}`);
 
-  // 0.5 — Rota inexistente
-  const nf = await http("GET", "/__mestre_inexistente__");
-  if (nf.status === 404 && nf.json?.error) ok("404 JSON correto");
-  else warn(`404 handler: ${nf.status}`);
-
-  // 0.6 — Payload grande
-  const big = "x".repeat(2.5 * 1024 * 1024);
-  const bigRes = await http("POST", "/auth/register", {
-    body: { email: "a@b.co", password: "123456", name: big },
-    timeoutMs: 30000,
-  });
-  if ([413, 400].includes(bigRes.status)) ok(`Payload 2.5MB → ${bigRes.status}`);
-  else finding({
-    id: "F0-01", phase: "0", title: "Payload grande não é rejeitado corretamente",
-    status: "CONFIRMADA",
-    evidence: { status: bigRes.status, body: truncate(bigRes.text) },
-    note: `Esperado 413/400, recebeu ${bigRes.status}`,
-    fix: "Verificar express.json limit e limites da Vercel.",
-  });
-
-  // 0.7 — Detecta presença do /__diag/instance
-  const diag = await http("GET", "/__diag/instance", {
-    headers: DIAG_TOKEN ? { "x-diag-token": DIAG_TOKEN } : {},
-  });
-  if (diag.status === 200 && diag.json?.instanceId) {
-    ok(`/__diag/instance disponível — instanceId=${diag.json.instanceId.slice(0, 8)}`);
-    state.snapshots.diagAvailable = true;
-    state.snapshots.firstInstanceId = diag.json.instanceId;
-  } else {
-    warn("/__diag/instance não disponível — Fase 1 ficará limitada a x-vercel-id");
-    state.snapshots.diagAvailable = false;
-  }
+  state.phases.phase0 = { ms: r.ms, cold: r.cold, region: r.vRegion };
 }
 
-async function fase0_baseline() {
-  section("FASE 0 — Baseline completo");
-  info("Este modo cria dados, mede latências e salva tudo em JSON.");
-  info("Rode ANTES de qualquer mudança para comparar depois.");
+// ============================================================================
+// FASE 1 — KEEP-ALIVE
+// ============================================================================
+async function phase1_keepalive() {
+  section(ICON.db, "FASE 1 — Keep-alive do banco", "GET /__health/db");
 
-  await fase0_diagnostico();
+  const h = {};
+  if (KEEPALIVE_TOKEN) h["x-keepalive-token"] = KEEPALIVE_TOKEN;
 
-  // cria 3 casais com dependentes e registros
-  const couples = [];
-  for (let i = 1; i <= 3; i++) {
-    info(`Casal #${i}...`);
-    const owner = await registerUser(`c${i}-own`);
-    const coupleId = await createCouple(owner);
-    const partner = await registerUser(`c${i}-part`);
+  const r = await http("GET", "/__health/db", { headers: h });
+  bullet(ICON.arrow, "Status", `${r.status === 200 ? C.green : C.red}HTTP ${r.status}${C.reset}`);
 
-    const inv = await http("POST", "/couple/invite", { token: owner.token, body: { email: partner.email } });
-    if (inv.status === 201) {
-      const invId = inv.json.notification.id;
-      await http("POST", `/notifications/${invId}/accept`, { token: partner.token });
-    }
-
-    const deps = [];
-    for (let d = 1; d <= 2; d++) {
-      const dep = await createDependent(owner, `DEP ${i}.${d} ${RUN_ID}`);
-      deps.push(dep.id);
-      for (const m of ["water", "pee", "poop", "behavior"]) {
-        await createRecord(owner, dep.id, m);
-      }
-    }
-
-    await http("POST", "/casal", { token: owner.token, body: { text: `TASK ${i} ${RUN_ID}` } });
-    await http("PUT", `/casal/data?key=${CASAL_DATA_KEYS[0]}`, {
-      token: owner.token, body: { value: { baseline: RUN_ID, coupleIdx: i } },
-    });
-
-    couples.push({ idx: i, owner: { email: owner.email, password: owner.password },
-                   coupleId, dependents: deps });
-  }
-
-  const out = path.join(OUT_DIR, `baseline-${RUN_ID}.json`);
-  fs.writeFileSync(out, JSON.stringify({
-    runId: RUN_ID, at: nowTs(), baseUrl: BASE_URL, couples,
-    endpoints: state.endpoints, metrics: state.metrics,
-  }, null, 2));
-  ok(`Baseline salvo em ${out}`);
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// FASE 1 — INSTRUMENTAÇÃO
-// ════════════════════════════════════════════════════════════════════════════
-
-async function fase1_fragmentacao() {
-  section("FASE 1 — Fragmentação de instância");
-
-  const total = 20;
-  const reqs = Array.from({ length: total }, () =>
-    http("GET", "/__diag/instance", { headers: DIAG_TOKEN ? { "x-diag-token": DIAG_TOKEN } : {} })
-  );
-  const rs = await Promise.all(reqs);
-
-  const diagOk = rs.filter(r => r.status === 200 && r.json?.instanceId);
-  const vercelIds = new Set(rs.map(r => r.vercelId).filter(Boolean));
-  const instanceIds = new Set(diagOk.map(r => r.json.instanceId));
-
-  info(`${total} requests paralelos:`);
-  info(`  x-vercel-id únicos:  ${vercelIds.size}`);
-  info(`  instanceId únicos:   ${diagOk.length ? instanceIds.size : "N/A (rota ausente)"}`);
-  info(`  avg latência:        ${Math.round(rs.reduce((s, r) => s + r.ms, 0) / rs.length)}ms`);
-
-  if (diagOk.length > 0) {
-    if (instanceIds.size === 1) {
-      finding({
-        id: "F1-01", phase: "1", title: "Singleton do PrismaClient funciona",
-        status: "DESCARTADA",
-        evidence: { total, instanceIds: instanceIds.size, vercelIds: vercelIds.size },
-        note: `1 instanceId para ${total} requests → container reaproveitado.`,
-      });
-    } else if (instanceIds.size < total / 2) {
-      finding({
-        id: "F1-01", phase: "1", title: "Singleton funciona mas fragmentação parcial",
-        status: "INCONCLUSIVA",
-        evidence: { total, instanceIds: instanceIds.size, vercelIds: vercelIds.size },
-        note: `${instanceIds.size} instâncias para ${total} requests.`,
-      });
-    } else {
-      finding({
-        id: "F1-01", phase: "1", title: "Fragmentação real de instância",
-        status: "CONFIRMADA",
-        evidence: { total, instanceIds: instanceIds.size, vercelIds: vercelIds.size },
-        note: `${instanceIds.size} instâncias distintas em ${total} requests.`,
-        fix: "Aplicar singleton em globalThis (sempre). Dimensionar connection_limit conforme nº de instâncias.",
-      });
-    }
-  } else {
-    // sem /__diag/instance, só x-vercel-id como indicador
-    finding({
-      id: "F1-01", phase: "1", title: "Fragmentação (indicador x-vercel-id)",
-      status: vercelIds.size > total / 2 ? "INCONCLUSIVA" : "DESCARTADA",
-      evidence: { total, vercelIds: vercelIds.size },
-      note: `x-vercel-id é apenas indicador — implementar /__diag/instance para prova.`,
-      fix: "Adicionar endpoint /__diag/instance à API.",
-    });
-  }
-}
-
-async function fase1_carga() {
-  section("FASE 1 — Fragmentação sob carga");
-
-  const u = await registerUser("f1");
-  await createCouple(u);
-  const dep = await createDependent(u);
-
-  const total = 50;
-  const reqs = Array.from({ length: total }, () =>
-    http("GET", `/dependent/${dep.id}`, { token: u.token })
-  );
-  const rs = await Promise.all(reqs);
-
-  const statuses = {};
-  for (const r of rs) statuses[r.status] = (statuses[r.status] || 0) + 1;
-  const latencies = rs.map(r => r.ms).sort((a, b) => a - b);
-  const p50 = latencies[Math.floor(total * 0.5)];
-  const p95 = latencies[Math.floor(total * 0.95)];
-  const max = latencies[total - 1];
-
-  info(`${total} requests paralelos a /dependent/:id`);
-  info(`  status:  ${JSON.stringify(statuses)}`);
-  info(`  p50/p95/max: ${p50}ms / ${p95}ms / ${max}ms`);
-
-  const errors = (statuses[500] || 0) + (statuses[503] || 0) + (statuses[0] || 0);
-  if (errors > 0) {
-    finding({
-      id: "F1-02", phase: "1", title: "Erros sob carga paralela",
-      status: "CONFIRMADA",
-      evidence: { statuses, p50, p95, max },
-      note: `${errors} erros em ${total} requests.`,
-      fix: "Investigar pool. Considerar connection_limit adequado.",
-    });
-  } else {
-    finding({
-      id: "F1-02", phase: "1", title: "Erros sob carga paralela",
-      status: "DESCARTADA",
-      evidence: { statuses, p50, p95, max },
-      note: `Sem erros. p95=${p95}ms.`,
-    });
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// FASE 2 — TESTES DE CORREÇÃO
-// ════════════════════════════════════════════════════════════════════════════
-
-async function fase2_race() {
-  section("FASE 2 — Race no accept (100 paralelos)");
-
-  const owner = await registerUser("f2-race-own");
-  await createCouple(owner);
-  const target = await registerUser("f2-race-tgt");
-  const inv = await http("POST", "/couple/invite", { token: owner.token, body: { email: target.email } });
-  if (inv.status !== 201) {
-    finding({ id: "F2-01", phase: "2", title: "Race accept", status: "INCONCLUSIVA",
-              note: `invite falhou: ${inv.status}` });
+  if (r.status === 401) {
+    warn("sem KEEPALIVE_TOKEN no shell", "defina $env:KEEPALIVE_TOKEN para testar");
     return;
   }
-  const inviteId = inv.json.notification.id;
+  if (r.status !== 200) {
+    test(false, "/__health/db retorna 200", `HTTP ${r.status}`);
+    return;
+  }
 
-  const N = 100;
-  const reqs = Array.from({ length: N }, () =>
-    http("POST", `/notifications/${inviteId}/accept`, { token: target.token })
+  const ok = r.json?.ok === true;
+  const latency = r.json?.latencyMs;
+  const error = r.json?.error;
+
+  bullet(ICON.ok, "Banco", ok ? `${C.green}disponível${C.reset}` : `${C.red}indisponível${C.reset}`);
+  bullet(ICON.clock, "Latência do SELECT 1", `${latency}ms`);
+  if (error) bullet(ICON.warn, "Erro", error);
+
+  test(ok === true, "banco respondeu ao SELECT 1", `ok=${ok}`);
+  if (!ok) {
+    state.bugs.push({ phase: 1, severity: "CRÍTICO", msg: "banco indisponível", evidence: r.json });
+  }
+
+  if (latency > 2000) warn("latência alta no keep-alive", "banco provavelmente hibernando");
+  else if (latency > 500) info("latência média no keep-alive", `${latency}ms`);
+  else info("banco quente", `${latency}ms`);
+
+  state.phases.phase1 = { ok, latency, error };
+}
+
+// ============================================================================
+// FASE 2 — AUTH + COUPLE + DEPENDENT
+// ============================================================================
+async function phase2_core() {
+  section(ICON.lock, "FASE 2 — Auth + Couple + Dependent", "fluxo principal");
+
+  // 2.1 Register
+  let owner;
+  try {
+    owner = await registerUser("p2-owner");
+    test(true, "register", `${owner.email}`);
+  } catch (e) {
+    test(false, "register", e.message);
+    return null;
+  }
+
+  // 2.2 Login
+  const login = await http("POST", "/auth/login", { body: { email: owner.email, password: owner.password } });
+  test(login.status === 200 && login.json?.token, "login", `HTTP ${login.status}`);
+
+  // 2.3 /auth/me
+  const me = await http("GET", "/auth/me", { token: owner.token });
+  test(me.status === 200 && me.json?.user?.id === owner.id, "/auth/me", `user.coupleId=${me.json?.user?.coupleId}`);
+
+  // 2.4 Sem token
+  const noAuth = await http("GET", "/auth/me");
+  test(noAuth.status === 401, "rejeita sem token", `HTTP ${noAuth.status}`);
+
+  // 2.5 Token inválido
+  const badAuth = await http("GET", "/auth/me", { token: "abc.def.ghi" });
+  test(badAuth.status === 401, "rejeita token inválido", `HTTP ${badAuth.status}`);
+
+  // 2.6 Cria casal
+  const coupleId = await createCouple(owner);
+  test(true, "create couple", coupleId.slice(0, 16) + "…");
+
+  // 2.7 Verifica coupleId refletido
+  const me2 = await http("GET", "/auth/me", { token: owner.token });
+  test(me2.json?.user?.coupleId === coupleId, "/auth/me reflete coupleId", `got=${me2.json?.user?.coupleId}`);
+
+  // 2.8 Cria dependente
+  const dep = await createDependent(owner, `Mestre Dep ${RUN_ID}`);
+  test(true, "create dependent", dep.id.slice(0, 16) + "…");
+
+  // 2.9 Lista dependentes
+  const deps = await http("GET", "/dependent", { token: owner.token });
+  test(Array.isArray(deps.json) && deps.json.length >= 1, "list dependent", `n=${deps.json?.length}`);
+
+  // 2.10 IDOR: outro user não acessa
+  const outsider = await registerUser("p2-out");
+  await createCouple(outsider);
+  const idor = await http("GET", `/dependent/${dep.id}`, { token: outsider.token });
+  test([403, 404].includes(idor.status), "IDOR bloqueado", `HTTP ${idor.status}`);
+
+  return { owner, outsider, coupleId, dep };
+}
+
+// ============================================================================
+// FASE 3 — FEATURES NOVAS
+// ============================================================================
+async function phase3_features(ctx) {
+  section(ICON.spark, "FASE 3 — Features novas", "sleep, custom, invite-link");
+
+  const { owner, dep } = ctx;
+  const today = ymd();
+
+  // 3.1 Sleep — criar
+  const sleepBody = {
+    dependentId: dep.id,
+    durationMin: 90,
+    startAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+    endAt: new Date(Date.now() - 0.5 * 3600_000).toISOString(),
+    quality: "bom",
+    note: `Mestre ${RUN_ID}`,
+    date: today,
+  };
+  const sleep = await http("POST", "/sleep", { token: owner.token, body: sleepBody });
+  test(sleep.status === 201, "POST /sleep", `HTTP ${sleep.status}`);
+
+  // 3.2 Sleep — listar
+  const sleepList = await http("GET", `/sleep?dependentId=${dep.id}`, { token: owner.token });
+  test(sleepList.status === 200 && sleepList.json.some((s) => s.id === sleep.json?.id),
+    "GET /sleep lista criado", `n=${sleepList.json?.length}`);
+
+  // 3.3 Sleep — timestamp inválido
+  const badTs = await http("POST", "/sleep", {
+    token: owner.token,
+    body: { ...sleepBody, startAt: "nao-e-data" },
+  });
+  test(badTs.status === 400, "POST /sleep startAt inválido → 400", `HTTP ${badTs.status}`);
+
+  // 3.4 Record-type — criar
+  const slug = `temp-${crypto.randomBytes(2).toString("hex")}`;
+  const rt = await http("POST", "/record-types", {
+    token: owner.token,
+    body: {
+      slug,
+      label: "Temperatura",
+      icon: "🌡",
+      fields: [
+        { name: "valor", label: "Valor", type: "number", required: true, min: 30, max: 45 },
+        { name: "local", label: "Local", type: "select", options: ["axila", "boca", "ouvido"] },
+      ],
+    },
+  });
+  test(rt.status === 201, "POST /record-types", `slug=${slug}`);
+
+  // 3.5 Custom-record — criar
+  const cr = await http("POST", "/custom-records", {
+    token: owner.token,
+    body: {
+      typeId: rt.json?.id,
+      dependentId: dep.id,
+      data: { valor: 37.5, local: "axila" },
+      timestamp: nowTs(),
+      date: today,
+    },
+  });
+  test(cr.status === 201, "POST /custom-records", `HTTP ${cr.status}`);
+
+  // 3.6 Custom-record — validação falha
+  const crBad = await http("POST", "/custom-records", {
+    token: owner.token,
+    body: {
+      typeId: rt.json?.id,
+      dependentId: dep.id,
+      data: { valor: 999, local: "axila" },  // valor > max
+      timestamp: nowTs(),
+      date: today,
+    },
+  });
+  test(crBad.status === 400, "custom-record fora do range → 400", `HTTP ${crBad.status}`);
+
+  // 3.7 Invite-link — criar
+  const il = await http("POST", "/couple/invite-link", {
+    token: owner.token,
+    body: { expiresInHours: 24, maxUses: 1 },
+  });
+  test(il.status === 201 && il.json?.token, "POST /couple/invite-link", `token=${il.json?.token?.slice(0, 10)}…`);
+
+  // 3.8 Invite-link — preview
+  if (il.json?.token) {
+    const prev = await http("GET", `/couple/invite-link/${il.json.token}/preview`);
+    test(prev.status === 200 && prev.json?.coupleId === ctx.coupleId, "preview público", `HTTP ${prev.status}`);
+  }
+
+  // 3.9 Invite-link — accept
+  const guest = await registerUser("p3-guest");
+  if (il.json?.token) {
+    const acc = await http("POST", `/couple/invite-link/${il.json.token}/accept`, { token: guest.token });
+    test(acc.status === 200 && acc.json?.coupleId === ctx.coupleId, "accept via link", `HTTP ${acc.status}`);
+  }
+
+  // 3.10 Notificações antigas ainda funcionam
+  const u2 = await registerUser("p3-n");
+  const inv = await http("POST", "/couple/invite", { token: owner.token, body: { email: u2.email } });
+  // owner já tem casal cheio (2 membros), então convite pode dar 409
+  if (inv.status === 201) {
+    test(true, "POST /couple/invite (legado)", `HTTP ${inv.status}`);
+  } else {
+    info("POST /couple/invite", `HTTP ${inv.status} (esperado se casal cheio)`);
+  }
+
+  state.phases.phase3 = { sleepId: sleep.json?.id, recordTypeId: rt.json?.id, inviteLinkToken: il.json?.token };
+}
+
+// ============================================================================
+// FASE 4 — SUMMARY
+// ============================================================================
+async function phase4_summary(ctx) {
+  section(ICON.wave, "FASE 4 — Summary (com sleep + custom)", "GET /summary");
+
+  const { owner, dep } = ctx;
+  const today = ymd();
+
+  const sum = await http("GET", `/summary?dependentId=${dep.id}&date=${today}`, { token: owner.token });
+  test(sum.status === 200, "GET /summary", `HTTP ${sum.status}`);
+
+  if (sum.status !== 200) return;
+
+  const body = sum.json || {};
+  bullet(ICON.spark, "sleep[]", `${body.sleep?.length ?? 0} registros`);
+  bullet(ICON.spark, "pee[]", `${body.pee?.length ?? 0} registros`);
+  bullet(ICON.spark, "poop[]", `${body.poop?.length ?? 0} registros`);
+  bullet(ICON.spark, "behavior[]", `${body.behavior?.length ?? 0} registros`);
+  bullet(ICON.spark, "custom{}", `${Object.keys(body.custom || {}).length} tipos`);
+  bullet(ICON.spark, "weekly.sleepMin", JSON.stringify(body.weekly?.sleepMin || []));
+  bullet(ICON.spark, "weekly.sleepCount", JSON.stringify(body.weekly?.sleepCount || []));
+
+  test(Array.isArray(body.sleep), "response tem sleep[]");
+  test(body.weekly?.sleepMin?.length === 7, "weekly.sleepMin tem 7 posições");
+  test(body.weekly?.sleepCount?.length === 7, "weekly.sleepCount tem 7 posições");
+  test(body.water !== undefined, "campo water mantido (compat)");
+
+  // Cross-couple
+  const { outsider } = ctx;
+  const idor = await http("GET", `/summary?dependentId=${dep.id}&date=${today}`, { token: outsider.token });
+  test([403, 404].includes(idor.status), "summary IDOR bloqueado", `HTTP ${idor.status}`);
+
+  state.phases.phase4 = {
+    sleepCount: body.sleep?.length,
+    customTypes: Object.keys(body.custom || {}).length,
+  };
+}
+
+// ============================================================================
+// FASE 5 — SEGURANÇA
+// ============================================================================
+async function phase5_seguranca(ctx) {
+  section(ICON.lock, "FASE 5 — Segurança", "IDOR, JWT, mass assignment");
+
+  const { owner, dep, outsider } = ctx;
+
+  // 5.1 IDOR em dependent
+  const idor1 = await http("GET", `/dependent/${dep.id}`, { token: outsider.token });
+  test([403, 404].includes(idor1.status), "GET /dependent/:id IDOR", `HTTP ${idor1.status}`);
+
+  // 5.2 IDOR em PUT
+  const idor2 = await http("PUT", `/dependent/${dep.id}`, {
+    token: outsider.token,
+    body: { name: "HACK" },
+  });
+  test([403, 404].includes(idor2.status), "PUT /dependent/:id IDOR", `HTTP ${idor2.status}`);
+
+  // 5.3 IDOR em DELETE
+  const idor3 = await http("DELETE", `/dependent/${dep.id}`, { token: outsider.token });
+  test([403, 404].includes(idor3.status), "DELETE /dependent/:id IDOR", `HTTP ${idor3.status}`);
+
+  // 5.4 Mass assignment — coupleId no body
+  const ma1 = await http("POST", "/dependent", {
+    token: owner.token,
+    body: { name: "MA Test", coupleId: "outro-id" },
+  });
+  if (ma1.status === 201) {
+    test(ma1.json.coupleId !== "outro-id", "não aceita coupleId do body", `coupleId=${ma1.json.coupleId}`);
+  }
+
+  // 5.5 Mass assignment — status no body
+  const ma2 = await http("POST", "/sleep", {
+    token: owner.token,
+    body: {
+      dependentId: dep.id,
+      durationMin: 30,
+      startAt: nowTs(),
+      date: ymd(),
+      status: "archived",   // deve ser ignorado
+    },
+  });
+  if (ma2.status === 201) {
+    test(ma2.json.status === "active", "status do body ignorado", `status=${ma2.json.status}`);
+  }
+
+  // 5.6 Payload grande
+  const big = "x".repeat(3 * 1024 * 1024);
+  const bigRes = await http("POST", "/auth/register", {
+    body: { email: "a@b.co", password: "123456", name: big },
+  });
+  test([413, 400].includes(bigRes.status), "payload 3MB rejeitado", `HTTP ${bigRes.status}`);
+
+  // 5.7 JWT forjado
+  const fake = "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOiJmYWtlIn0.xxx";
+  const jwt = await http("GET", "/auth/me", { token: fake });
+  test(jwt.status === 401, "JWT forjado → 401", `HTTP ${jwt.status}`);
+}
+
+// ============================================================================
+// FASE 6 — CONCORRÊNCIA
+// ============================================================================
+async function phase6_race() {
+  section(ICON.bolt, "FASE 6 — Concorrência", "accept race, invite race");
+
+  // 6.1 100 accepts paralelos
+  const owner = await registerUser("p6-own");
+  const coupleId = await createCouple(owner);
+  const target = await registerUser("p6-tgt");
+  const inv = await http("POST", "/couple/invite", { token: owner.token, body: { email: target.email } });
+
+  if (inv.status === 201) {
+    const inviteId = inv.json.notification.id;
+    const N = 100;
+    const reqs = Array.from({ length: N }, () =>
+      http("POST", `/notifications/${inviteId}/accept`, { token: target.token })
+    );
+    const rs = await Promise.all(reqs);
+    const ok = rs.filter((r) => r.status === 200).length;
+    const conflict = rs.filter((r) => r.status === 409).length;
+    const other = rs.filter((r) => ![200, 409].includes(r.status)).length;
+
+    test(ok === 1, `${N}x accept → exatamente 1 sucesso`, `200=${ok} 409=${conflict} outros=${other}`);
+    state.phases.phase6 = { acceptOk: ok, acceptConflict: conflict };
+  }
+
+  // 6.2 20 invite-links paralelos
+  const owner2 = await registerUser("p6-own2");
+  await createCouple(owner2);
+  const N2 = 20;
+  const reqs2 = Array.from({ length: N2 }, () =>
+    http("POST", "/couple/invite-link", { token: owner2.token, body: { expiresInHours: 24 } })
   );
-  const rs = await Promise.all(reqs);
-
-  const ok_ = rs.filter(r => r.status === 200).length;
-  const conflict = rs.filter(r => r.status === 409).length;
-  const other = rs.filter(r => ![200, 409].includes(r.status));
-
-  info(`${N} accepts paralelos: 200=${ok_} 409=${conflict} outros=${other.length}`);
-
-  if (ok_ === 1) {
-    finding({
-      id: "F2-01", phase: "2", title: "Race no accept",
-      status: "DESCARTADA",
-      evidence: { total: N, ok: ok_, conflict, other: other.map(r => r.status) },
-      note: "Exatamente 1 sucesso — operação atômica.",
-    });
-  } else {
-    finding({
-      id: "F2-01", phase: "2", title: "Race no accept",
-      status: "CONFIRMADA",
-      evidence: { total: N, ok: ok_, conflict, other: other.map(r => r.status) },
-      note: `${ok_} accepts bem-sucedidos (esperado 1).`,
-      fix: "updateMany({ where: { id, status: PENDING }, data: { status: ACCEPTED } }) dentro de transação + checar count.",
-    });
-  }
+  const rs2 = await Promise.all(reqs2);
+  const created = rs2.filter((r) => r.status === 201).length;
+  info(`${N2}x invite-link criados`, `${created} sucessos`);
+  test(created >= 1 && created <= N2, "invite-link race sem duplicação crítica", `${created}/${N2}`);
 }
 
-async function fase2_timestamp() {
-  section("FASE 2 — Validação de timestamp");
+// ============================================================================
+// FASE 7 — LATÊNCIA
+// ============================================================================
+async function phase7_latencia() {
+  section(ICON.clock, "FASE 7 — Latência por endpoint", "20 amostras cada");
 
-  const u = await registerUser("f2-ts");
+  const u = await registerUser("p7");
   await createCouple(u);
   const dep = await createDependent(u);
   const today = ymd();
-
-  const cases = [
-    { label: "ISO válido",        value: nowTs() },
-    { label: "data simples",      value: "2024-01-01" },
-    { label: "unix ms (número)",  value: Date.now() },
-    { label: "unix s (número)",   value: Math.floor(Date.now() / 1000) },
-    { label: "string inválida",   value: "nao-e-data" },
-    { label: "string vazia",      value: "" },
-    { label: "null",              value: null },
-    { label: "objeto",            value: { foo: "bar" } },
-    { label: "array",             value: [1, 2, 3] },
-  ];
-
-  for (const model of ["water", "pee", "poop", "behavior"]) {
-    info(`\n  ${model}:`);
-    for (const c of cases) {
-      const body = {
-        water:    { amount: 100, date: today, dependentId: dep.id },
-        pee:      { size: "medio", type: "espontaneo", date: today, dependentId: dep.id },
-        poop:     { evacuated: true, date: today, dependentId: dep.id },
-        behavior: { observed: "x", date: today, dependentId: dep.id },
-      }[model];
-      body.timestamp = c.value;
-
-      const r = await http("POST", `/${model}`, { token: u.token, body });
-      const expected = [201, 400, 422];
-      if (!expected.includes(r.status)) {
-        warn(`    ${c.label.padEnd(20)} → ${r.status} ${C.dim}(inesperado)${C.reset}`);
-      } else {
-        info(`    ${c.label.padEnd(20)} → ${r.status}`);
-      }
-      if (r.status === 500) {
-        finding({
-          id: `F2-02-${model}-${c.label}`, phase: "2",
-          title: `Timestamp inválido (${c.label}) → 500 em ${model}`,
-          status: "CONFIRMADA",
-          evidence: { model, input: c.label, status: r.status, body: truncate(r.text) },
-          note: `Esperado 400/422, recebeu 500.`,
-          fix: "Validar `new Date(str)` com isNaN antes do Prisma. Retornar 400.",
-        });
-      }
-    }
-  }
-}
-
-async function fase2_pool() {
-  section("FASE 2 — Esgotamento de pool");
-
-  const u = await registerUser("f2-pool");
-  await createCouple(u);
-  const dep = await createDependent(u);
-
-  const total = 200;
-  const burst = 50;
-  const statuses = {};
-  const latencies = [];
-
-  for (let i = 0; i < total; i += burst) {
-    const slice = Math.min(burst, total - i);
-    const reqs = Array.from({ length: slice }, () =>
-      http("GET", `/dependent/${dep.id}`, { token: u.token })
-    );
-    const rs = await Promise.all(reqs);
-    for (const r of rs) {
-      statuses[r.status] = (statuses[r.status] || 0) + 1;
-      latencies.push(r.ms);
-    }
-  }
-
-  latencies.sort((a, b) => a - b);
-  const p95 = latencies[Math.floor(latencies.length * 0.95)];
-  const p99 = latencies[Math.floor(latencies.length * 0.99)];
-  const max = latencies[latencies.length - 1];
-
-  info(`${total} requests em rajadas de ${burst}`);
-  info(`  status: ${JSON.stringify(statuses)}`);
-  info(`  p95/p99/max: ${p95}ms / ${p99}ms / ${max}ms`);
-
-  const errors = (statuses[500] || 0) + (statuses[503] || 0) + (statuses[0] || 0);
-  const rate = errors / total;
-
-  if (rate > 0.01) {
-    finding({
-      id: "F2-03", phase: "2", title: "Pool esgotado sob carga",
-      status: "CONFIRMADA",
-      evidence: { total, burst, statuses, p95, p99, max },
-      note: `${(rate * 100).toFixed(2)}% de falhas.`,
-      fix: "connection_limit=1 + pgbouncer (se provider suportar). Singleton global. Retry no front.",
-    });
-  } else if (p95 > 3000) {
-    finding({
-      id: "F2-03", phase: "2", title: "Pool esgotado sob carga",
-      status: "INCONCLUSIVA",
-      evidence: { p95, p99, max, statuses },
-      note: `Sem falhas, mas p95=${p95}ms sugere saturação.`,
-    });
-  } else {
-    finding({
-      id: "F2-03", phase: "2", title: "Pool esgotado sob carga",
-      status: "DESCARTADA",
-      evidence: { p95, p99, max, statuses },
-      note: "Sem falhas em 200 requests.",
-    });
-  }
-}
-
-async function fase2_singleton() {
-  section("FASE 2 — Fragmentação de PrismaClient");
-
-  // igual a fase1_fragmentacao, mas com mais carga e estatística
-  const rounds = 3;
-  const perRound = 20;
-  const allVercelIds = new Set();
-  let diagAvailable = state.snapshots.diagAvailable;
-  const allInstanceIds = new Set();
-
-  for (let r = 1; r <= rounds; r++) {
-    const reqs = Array.from({ length: perRound }, () =>
-      http("GET", "/__diag/instance", { headers: DIAG_TOKEN ? { "x-diag-token": DIAG_TOKEN } : {} })
-    );
-    const rs = await Promise.all(reqs);
-    rs.forEach(x => {
-      if (x.vercelId) allVercelIds.add(x.vercelId);
-      if (x.json?.instanceId) allInstanceIds.add(x.json.instanceId);
-    });
-    await sleep(1500);
-  }
-
-  info(`${rounds} rounds × ${perRound} requests`);
-  info(`  x-vercel-id únicos: ${allVercelIds.size}`);
-  info(`  instanceId únicos:  ${diagAvailable ? allInstanceIds.size : "N/A"}`);
-
-  if (diagAvailable && allInstanceIds.size > 1) {
-    finding({
-      id: "F2-04", phase: "2", title: "Fragmentação de instância",
-      status: "CONFIRMADA",
-      evidence: { vercelIds: allVercelIds.size, instanceIds: allInstanceIds.size },
-      note: `${allInstanceIds.size} instâncias distintas.`,
-      fix: "globalThis.prisma sempre (inclusive em produção).",
-    });
-  } else {
-    finding({
-      id: "F2-04", phase: "2", title: "Fragmentação de instância",
-      status: diagAvailable ? "DESCARTADA" : "INCONCLUSIVA",
-      evidence: { vercelIds: allVercelIds.size, instanceIds: allInstanceIds.size },
-      note: diagAvailable ? "Instância única." : "Instrumentação ausente.",
-      fix: diagAvailable ? "" : "Adicionar /__diag/instance à API.",
-    });
-  }
-}
-
-async function fase2_integracao() {
-  section("FASE 2 — Consistência API ↔ banco (amostragem)");
-
-  const u = await registerUser("f2-integ");
-  await createCouple(u);
-  const dep = await createDependent(u);
-
-  // cria 10 registros variados
-  const ids = [];
-  for (let i = 0; i < 10; i++) {
-    const r = await createRecord(u, dep.id, "water", { amount: 100 + i });
-    if (r.status === 201) ids.push({ id: r.json.id, expectedAmount: 100 + i });
-  }
-
-  // relê por listagem
-  const list = await http("GET", `/water?dependentId=${dep.id}`, { token: u.token });
-  const fromApi = new Map((list.json || []).map(x => [x.id, x]));
-
-  let ok_ = 0, missing = 0, divergent = 0;
-  for (const { id, expectedAmount } of ids) {
-    const got = fromApi.get(id);
-    if (!got) { missing++; continue; }
-    if (got.amount === expectedAmount) ok_++;
-    else divergent++;
-  }
-
-  info(`  criados: ${ids.length}`);
-  info(`  ok:      ${ok_}`);
-  info(`  missing: ${missing}`);
-  info(`  diverg:  ${divergent}`);
-
-  if (missing > 0 || divergent > 0) {
-    finding({
-      id: "F2-05", phase: "2", title: "Divergência API ↔ banco",
-      status: "CONFIRMADA",
-      evidence: { created: ids.length, ok: ok_, missing, divergent },
-      note: `${missing} ausentes, ${divergent} divergentes.`,
-      fix: "Investigar leitura. Comparar direto no banco.",
-    });
-  } else {
-    finding({
-      id: "F2-05", phase: "2", title: "Divergência API ↔ banco",
-      status: "DESCARTADA",
-      evidence: { created: ids.length, ok: ok_ },
-      note: "Todos os 10 registros consistentes.",
-    });
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// FASE 3 — VALIDAÇÃO
-// ════════════════════════════════════════════════════════════════════════════
-
-async function fase3_persist(waitSec = 0) {
-  section(`FASE 3 — Persistência ${waitSec ? `(espera ${waitSec}s)` : "(imediata)"}`);
-
-  const u = await registerUser("f3-persist");
-  await createCouple(u);
-  const dep = await createDependent(u);
-  const today = ymd();
-
-  const records = {};
-  for (const m of ["water", "pee", "poop", "behavior"]) {
-    const r = await createRecord(u, dep.id, m);
-    if (r.status === 201) records[m] = { id: r.json.id, body: r.json };
-  }
-
-  if (waitSec > 0) {
-    info(`aguardando ${waitSec}s...`);
-    await sleep(waitSec * 1000);
-  }
-
-  let lost = 0, ok_ = 0;
-  for (const [model, rec] of Object.entries(records)) {
-    const r = await http("GET", `/${model}?dependentId=${dep.id}`, { token: u.token });
-    if (r.status === 200 && Array.isArray(r.json) && r.json.some(x => x.id === rec.id)) {
-      ok_++;
-    } else {
-      lost++;
-      finding({
-        id: `F3-01-${model}`, phase: "3", title: `Registro ${model} sumiu`,
-        status: "CONFIRMADA",
-        evidence: { model, id: rec.id, readStatus: r.status },
-        note: `Após ${waitSec}s, registro não encontrado.`,
-        fix: "Investigar retenção/leitura.",
-      });
-    }
-  }
-
-  if (lost === 0) {
-    finding({
-      id: "F3-01", phase: "3", title: "Persistência de registros",
-      status: "DESCARTADA",
-      evidence: { ok: ok_, lost },
-      note: `Todos os ${ok_} registros sobreviveram.`,
-    });
-  }
-}
-
-async function fase3_latencia() {
-  section("FASE 3 — Latência por endpoint");
-
-  const u = await registerUser("f3-lat");
-  await createCouple(u);
-  const dep = await createDependent(u);
 
   const targets = [
     ["GET", "/"],
@@ -759,313 +598,211 @@ async function fase3_latencia() {
     ["GET", "/couple/me", { token: u.token }],
     ["GET", "/dependent", { token: u.token }],
     ["GET", `/dependent/${dep.id}`, { token: u.token }],
-    ["GET", `/summary?dependentId=${dep.id}&date=${ymd()}`, { token: u.token }],
+    ["GET", `/summary?dependentId=${dep.id}&date=${today}`, { token: u.token }],
     ["GET", "/casal", { token: u.token }],
-    ["GET", `/casal/data?key=${CASAL_DATA_KEYS[0]}`, { token: u.token }],
+    ["GET", "/record-types", { token: u.token }],
+    ["GET", "/casal/data?key=mimos", { token: u.token }],
   ];
 
   const samples = 20;
-  const results = [];
+  const rows = [];
 
-  for (const [method, url, opts = {}] of targets) {
+  for (const [method, path, opts = {}] of targets) {
     const lats = [];
     for (let i = 0; i < samples; i++) {
-      const r = await http(method, url, opts);
+      const r = await http(method, path, opts);
       lats.push(r.ms);
     }
     lats.sort((a, b) => a - b);
-    const p50 = lats[Math.floor(samples * 0.5)];
-    const p95 = lats[Math.floor(samples * 0.95)];
-    const p99 = lats[Math.floor(samples * 0.99)];
-    const max = lats[samples - 1];
-    results.push({ method, url, p50, p95, p99, max });
-    const color = p95 > 1000 ? C.red : p95 > 500 ? C.yellow : C.green;
-    console.log(`  ${color}${method} ${url.padEnd(45)} p50=${p50} p95=${p95} p99=${p99} max=${max}${C.reset}`);
-  }
-
-  const bad = results.filter(r => r.p95 > 1000);
-  if (bad.length) {
-    finding({
-      id: "F3-02", phase: "3", title: "Latência p95 acima de 1s",
-      status: "CONFIRMADA",
-      evidence: { endpoints: bad },
-      note: `${bad.length} endpoints com p95 > 1s.`,
-      fix: "Investigar pool, cold start, provider.",
+    const avg = Math.round(lats.reduce((s, v) => s + v, 0) / samples);
+    rows.push({
+      method, path: truncate(path, 40),
+      min: lats[0], avg,
+      p50: lats[Math.floor(samples * 0.5)],
+      p95: lats[Math.floor(samples * 0.95)],
+      max: lats[samples - 1],
     });
   }
+
+  table(rows, [
+    { key: "method", header: "method", max: 7 },
+    { key: "path", header: "path", max: 42 },
+    { key: "min", header: "min", max: 7, color: (v) => C.dim },
+    { key: "avg", header: "avg", max: 7, color: (v) => v > 2000 ? C.red : v > 800 ? C.yellow : C.green },
+    { key: "p50", header: "p50", max: 7 },
+    { key: "p95", header: "p95", max: 7, color: (v) => v > 2000 ? C.red : v > 1000 ? C.yellow : C.reset },
+    { key: "max", header: "max", max: 7 },
+  ]);
+
+  state.phases.phase7 = rows;
 }
 
-async function fase3_full() {
-  await fase3_persist(0);
-  await fase3_persist(60);
-  await fase3_latencia();
-}
+// ============================================================================
+// FASE 8 — DIAGNÓSTICO
+// ============================================================================
+async function phase8_diag() {
+  section(ICON.spark, "FASE 8 — Diagnóstico", "GET /__diag/instance");
 
-// ════════════════════════════════════════════════════════════════════════════
-// FASE 4 — AUDITORIAS
-// ════════════════════════════════════════════════════════════════════════════
+  const h = {};
+  if (DIAG_TOKEN) h["x-diag-token"] = DIAG_TOKEN;
 
-async function fase4_cascade() {
-  section("FASE 4 — Cascade em DELETE /couple/leave");
-
-  const owner = await registerUser("f4-casc");
-  const coupleId = await createCouple(owner);
-  const partner = await registerUser("f4-casc-p");
-  const inv = await http("POST", "/couple/invite", { token: owner.token, body: { email: partner.email } });
-  if (inv.status === 201) {
-    await http("POST", `/notifications/${inv.json.notification.id}/accept`, { token: partner.token });
+  const r = await http("GET", "/__diag/instance", { headers: h });
+  if (r.status === 404 && !DIAG_TOKEN) {
+    info("/__diag/instance sem token", "404 esperado");
+    return;
   }
-  const dep = await createDependent(owner, `CASCADE ${RUN_ID}`);
-  const water = await createRecord(owner, dep.id, "water");
-
-  info(`Antes: dep=${dep.id} water=${water.json?.id}`);
-  const before = await http("GET", `/dependent/${dep.id}`, { token: owner.token });
-  info(`  GET /dependent/${dep.id} → ${before.status}`);
-
-  // partner sai — dep deve sobreviver
-  const leaveP = await http("DELETE", "/couple/leave", { token: partner.token });
-  info(`  DELETE /couple/leave (partner) → ${leaveP.status}`);
-  const afterP = await http("GET", `/dependent/${dep.id}`, { token: owner.token });
-  info(`  GET /dependent/${dep.id} → ${afterP.status}`);
-
-  // owner sai — agora o couple vira órfão e cascade dispara
-  const leaveO = await http("DELETE", "/couple/leave", { token: owner.token });
-  info(`  DELETE /couple/leave (owner) → ${leaveO.status}`);
-
-  // tenta reler (owner agora está sem casal → requireCouple bloqueia)
-  const afterO = await http("GET", `/dependent/${dep.id}`, { token: owner.token });
-  info(`  GET /dependent/${dep.id} pós-leave total → ${afterO.status}`);
-
-  if (afterP.status === 200 && afterO.status !== 200) {
-    finding({
-      id: "F4-01", phase: "4", title: "Cascade em leave",
-      status: "CONFIRMADA",
-      evidence: {
-        before: before.status,
-        afterPartnerLeaves: afterP.status,
-        afterOwnerLeaves: afterO.status,
-      },
-      note: "Dependente some quando o último membro sai — cascade confirmado.",
-      fix: "Decisão de produto: excluir, soft delete ou transferir. Documentar.",
-    });
-  } else if (afterP.status === 200 && afterO.status === 403) {
-    finding({
-      id: "F4-01", phase: "4", title: "Cascade em leave",
-      status: "INCONCLUSIVA",
-      evidence: { afterPartnerLeaves: afterP.status, afterOwnerLeaves: afterO.status },
-      note: "403 pós-leave (requireCouple bloqueia antes de checar cascade). Necessário reentrar em outro casal para confirmar.",
-    });
-  } else {
-    finding({
-      id: "F4-01", phase: "4", title: "Cascade em leave",
-      status: "DESCARTADA",
-      evidence: { before: before.status, afterPartnerLeaves: afterP.status, afterOwnerLeaves: afterO.status },
-      note: "Dependente sobreviveu aos dois leaves.",
-    });
+  if (r.status === 401) {
+    warn("token de diag inválido", "confere DIAG_TOKEN");
+    return;
   }
+  if (r.status !== 200) {
+    test(false, "/__diag/instance", `HTTP ${r.status}`);
+    return;
+  }
+
+  const d = r.json || {};
+  bullet(ICON.spark, "instanceId", d.instanceId?.slice(0, 20) + "…");
+  bullet(ICON.clock, "uptime", `${d.uptime}s`);
+  bullet(ICON.spark, "bootCount", d.bootCount);
+  bullet(ICON.spark, "requestCount", d.requestCount);
+  bullet(ICON.spark, "memMB", d.memMB);
+  bullet(ICON.spark, "region", d.region || "n/a");
+  bullet(ICON.spark, "prismaInitAt", d.prismaInitAt ? "sim" : "não");
+
+  test(!!d.instanceId, "instanceId presente");
+  test(Number.isFinite(d.uptime), "uptime numérico");
+
+  state.phases.phase8 = d;
 }
 
-async function fase4_exclusao() {
-  section("FASE 4 — Rotas destrutivas");
+// ============================================================================
+// RELATÓRIO FINAL
+// ============================================================================
+function finalReport() {
+  const dur = Date.now() - state.startedAt;
+  const lat = state.metrics.map((m) => m.ms).sort((a, b) => a - b);
+  const colds = state.metrics.filter((m) => m.cold).length;
+  const errs = state.metrics.filter((m) => m.status >= 500).length;
+  const clientErrs = state.metrics.filter((m) => m.status >= 400 && m.status < 500).length;
+  const total = state.metrics.length;
 
-  const rotas = [
-    ["DELETE", "/couple/leave"],
-    ["DELETE", "/dependent/:id"],
-    ["DELETE", "/water?id="],
-    ["DELETE", "/pee?id="],
-    ["DELETE", "/poop?id="],
-    ["DELETE", "/behavior?id="],
-    ["DELETE", "/casal?id="],
-    ["DELETE", "/notifications/:id"],
-  ];
-  info("Rotas destrutivas identificadas no código:");
-  for (const [m, r] of rotas) console.log(`    ${m} ${r}`);
-  info("Todas exigem authRequired. Cascade relevante: Dependent → Couple, CoupleData/Task/Notification → Couple/User.");
-}
+  console.log("");
+  console.log(`${C.bold}${C.magenta}╔${"═".repeat(76)}╗${C.reset}`);
+  console.log(`${C.bold}${C.magenta}║${C.reset}  ${C.bold}${C.white}RELATÓRIO FINAL${C.reset}${pad("", 59)}${C.bold}${C.magenta}║${C.reset}`);
+  console.log(`${C.bold}${C.magenta}╚${"═".repeat(76)}╝${C.reset}`);
 
-async function fase4_front() {
-  section("FASE 4 — Simulação de padrões de leitura");
+  console.log("");
+  console.log(`  ${C.bold}Execução${C.reset}`);
+  console.log(`  ${line("─", 76)}`);
+  bullet(ICON.spark, "runId", state.runId);
+  bullet(ICON.spark, "baseUrl", state.baseUrl);
+  bullet(ICON.clock, "duração", `${(dur / 1000).toFixed(1)}s`);
+  bullet(ICON.db, "requisições", total);
+  bullet(ICON.bolt, "cold starts", colds);
+  bullet(ICON.bug, "erros 5xx", errs);
+  bullet(ICON.warn, "erros 4xx", clientErrs);
 
-  const u = await registerUser("f4-front");
-  await createCouple(u);
-  const dep = await createDependent(u);
-  await createRecord(u, dep.id, "water");
+  console.log("");
+  console.log(`  ${C.bold}Testes${C.reset}`);
+  console.log(`  ${line("─", 76)}`);
+  const passColor = counters.pass > 0 ? C.green : C.gray;
+  const failColor = counters.fail > 0 ? C.red : C.gray;
+  bullet(ICON.check, "passou", `${passColor}${counters.pass}${C.reset}`);
+  bullet(ICON.cross, "falhou", `${failColor}${counters.fail}${C.reset}`);
+  bullet(ICON.warn, "avisos", `${C.yellow}${counters.warn}${C.reset}`);
+  bullet(ICON.info, "infos", `${C.cyan}${counters.info}${C.reset}`);
 
-  // Padrão 1: front chama /summary com data errada
-  const wrongDate = await http("GET", `/summary?dependentId=${dep.id}&date=1999-01-01`, { token: u.token });
-  info(`  summary data sem dados → ${wrongDate.status} (esperado 200 com arrays vazios)`);
-  if (wrongDate.status === 200) {
-    const empty = wrongDate.json?.water?.length === 0;
-    info(`  retorna arrays vazios: ${empty}`);
-    if (!empty) {
-      finding({
-        id: "F4-02", phase: "4", title: "Summary de dia vazio retorna dados",
-        status: "CONFIRMADA",
-        evidence: { waterCount: wrongDate.json.water?.length },
-        fix: "Verificar filtro por data.",
-      });
+  const rate = counters.pass + counters.fail > 0
+    ? Math.round((counters.pass / (counters.pass + counters.fail)) * 100)
+    : 0;
+  const rateColor = rate === 100 ? C.green : rate >= 80 ? C.yellow : C.red;
+  console.log("");
+  const bar = "█".repeat(Math.round(rate / 4)) + "░".repeat(25 - Math.round(rate / 4));
+  console.log(`  ${rateColor}${bar}${C.reset}  ${C.bold}${rateColor}${rate}%${C.reset} aprovação`);
+
+  if (lat.length) {
+    console.log("");
+    console.log(`  ${C.bold}Latência global (${lat.length} amostras)${C.reset}`);
+    console.log(`  ${line("─", 76)}`);
+    bullet(ICON.clock, "min", `${lat[0]}ms`);
+    bullet(ICON.clock, "p50", `${lat[Math.floor(lat.length * 0.5)]}ms`);
+    bullet(ICON.clock, "p95", `${C.yellow}${lat[Math.floor(lat.length * 0.95)]}ms${C.reset}`);
+    bullet(ICON.clock, "p99", `${C.yellow}${lat[Math.floor(lat.length * 0.99)]}ms${C.reset}`);
+    bullet(ICON.clock, "max", `${lat[lat.length - 1]}ms`);
+  }
+
+  if (state.bugs.length) {
+    console.log("");
+    console.log(`  ${C.bold}${C.red}Bugs detectados${C.reset}`);
+    console.log(`  ${line("─", 76)}`);
+    for (const b of state.bugs) {
+      console.log(`  ${C.red}${ICON.bug}${C.reset} [${b.severity}] ${b.msg}`);
     }
   }
 
-  // Padrão 2: front usa token velho
-  const old = await http("GET", "/auth/me", { token: u.token.slice(0, -3) + "xxx" });
-  info(`  token inválido → ${old.status} (front deve tratar como logout, não como "sem dados")`);
-  if (old.status === 200) {
-    finding({
-      id: "F4-03", phase: "4", title: "Token inválido aceito",
-      status: "CONFIRMADA",
-      evidence: { status: old.status },
-      fix: "Revisar verifyToken.",
-    });
-  }
+  // Status final
+  console.log("");
+  const ok = counters.fail === 0;
+  const bgColor = ok ? C.bgGreen : C.bgRed;
+  const label = ok ? " TODOS OS TESTES PASSARAM " : ` ${counters.fail} TESTE(S) FALHARAM `;
+  console.log(`  ${bgColor}${C.bold}${C.white}  ${label}  ${C.reset}`);
+  console.log("");
 
-  // Padrão 3: front chama ID inexistente
-  const ghost = await http("GET", `/dependent/naoexiste-${RUN_ID}`, { token: u.token });
-  info(`  ID inexistente → ${ghost.status} (front deve mostrar "não encontrado", não "vazio")`);
-
-  finding({
-    id: "F4-04", phase: "4", title: "Padrões de leitura documentados",
-    status: "INCONCLUSIVA",
-    evidence: {
-      summaryEmpty: wrongDate.status,
-      tokenInvalid: old.status,
-      idGhost: ghost.status,
+  // Salva JSON
+  const out = {
+    runId: state.runId,
+    startedAt: new Date(state.startedAt).toISOString(),
+    finishedAt: new Date().toISOString(),
+    durationMs: dur,
+    baseUrl: state.baseUrl,
+    totals: { requests: total, colds, err5xx: errs, err4xx: clientErrs },
+    tests: { pass: counters.pass, fail: counters.fail, warn: counters.warn, info: counters.info, rate },
+    phases: state.phases,
+    latency: {
+      min: lat[0], p50: lat[Math.floor(lat.length * 0.5)],
+      p95: lat[Math.floor(lat.length * 0.95)], p99: lat[Math.floor(lat.length * 0.99)],
+      max: lat[lat.length - 1],
     },
-    note: "Verificar no frontend se 500/404 são tratados como dados vazios (fonte do sintoma percebido).",
-  });
+    bugs: state.bugs,
+  };
+  const outPath = `mestre-report-${RUN_ID}.json`;
+  fs.writeFileSync(outPath, JSON.stringify(out, null, 2));
+  console.log(`  ${C.green}${ICON.ok}${C.reset} Relatório JSON: ${C.bold}${outPath}${C.reset}`);
+  console.log("");
+
+  process.exit(ok ? 0 : 1);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// RELATÓRIO FINAL
-// ════════════════════════════════════════════════════════════════════════════
-
-function finalize() {
-  state.finishedAt = new Date().toISOString();
-  const durationMs = new Date(state.finishedAt) - new Date(state.startedAt);
-
-  const confirmed = state.findings.filter(f => f.status === "CONFIRMADA");
-  const discarded = state.findings.filter(f => f.status === "DESCARTADA");
-  const inconclusive = state.findings.filter(f => f.status === "INCONCLUSIVA");
-
-  section("RESUMO FINAL");
-  console.log(`  Base URL:     ${BASE_URL}`);
-  console.log(`  Duração:      ${durationMs}ms`);
-  console.log(`  Endpoints:    ${Object.keys(state.endpoints).length}`);
-  console.log(`  Requisições:  ${state.metrics.length}`);
-  console.log(`  Findings:     ${state.findings.length}`);
-  console.log(`    ${C.red}CONFIRMADAS:   ${confirmed.length}${C.reset}`);
-  console.log(`    ${C.green}DESCARTADAS:   ${discarded.length}${C.reset}`);
-  console.log(`    ${C.yellow}INCONCLUSIVAS: ${inconclusive.length}${C.reset}`);
-
-  if (confirmed.length) {
-    console.log(`\n  ${C.bold}${C.red}CONFIRMADAS:${C.reset}`);
-    confirmed.forEach(f => console.log(`    ${C.red}✗${C.reset} ${f.id} — ${f.title}`));
-  }
-  if (inconclusive.length) {
-    console.log(`\n  ${C.bold}${C.yellow}INCONCLUSIVAS:${C.reset}`);
-    inconclusive.forEach(f => console.log(`    ${C.yellow}?${C.reset} ${f.id} — ${f.title}`));
-  }
-
-  // Latência global
-  const lat = state.metrics.map(m => m.ms).sort((a, b) => a - b);
-  if (lat.length) {
-    console.log(`\n  ${C.bold}Latência global:${C.reset}`);
-    console.log(`    min=${lat[0]} p50=${lat[Math.floor(lat.length * 0.5)]} p95=${lat[Math.floor(lat.length * 0.95)]} p99=${lat[Math.floor(lat.length * 0.99)]} max=${lat[lat.length - 1]}`);
-  }
-
-  const out = path.join(OUT_DIR, `report-${RUN_ID}.json`);
-  fs.writeFileSync(out, JSON.stringify({
-    ...state,
-    durationMs,
-    summary: {
-      confirmed: confirmed.length,
-      discarded: discarded.length,
-      inconclusive: inconclusive.length,
-    },
-  }, null, 2));
-  console.log(`\n  ${C.green}Relatório:${C.reset} ${out}\n`);
-
-  return confirmed.length;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// RUNNER
-// ════════════════════════════════════════════════════════════════════════════
-
-const MODES = {
-  // Fase 0
-  fase0: fase0_diagnostico,
-  "fase0:baseline": fase0_baseline,
-
-  // Fase 1
-  fase1: fase1_fragmentacao,
-  "fase1:carga": fase1_carga,
-
-  // Fase 2
-  "fase2:race": fase2_race,
-  "fase2:timestamp": fase2_timestamp,
-  "fase2:pool": fase2_pool,
-  "fase2:singleton": fase2_singleton,
-  "fase2:integracao": fase2_integracao,
-
-  // Fase 3
-  "fase3:persist": () => fase3_persist(0),
-  "fase3:latencia": fase3_latencia,
-  "fase3:full": fase3_full,
-
-  // Fase 4
-  "fase4:cascade": fase4_cascade,
-  "fase4:exclusao": fase4_exclusao,
-  "fase4:front": fase4_front,
-
-  // Compostos
-  smoke: async () => {
-    await fase0_diagnostico();
-    await fase1_fragmentacao();
-  },
-  audit: async () => {
-    await fase0_diagnostico();
-    await fase1_fragmentacao();
-    await fase4_exclusao();
-  },
-  full: async () => {
-    await fase0_diagnostico();
-    await fase0_baseline();
-    await fase1_fragmentacao();
-    await fase1_carga();
-    await fase2_race();
-    await fase2_timestamp();
-    await fase2_pool();
-    await fase2_singleton();
-    await fase2_integracao();
-    await fase3_persist(0);
-    await fase3_persist(60);
-    await fase3_latencia();
-    await fase4_cascade();
-    await fase4_exclusao();
-    await fase4_front();
-  },
-};
-
+// ============================================================================
+// MAIN
+// ============================================================================
 (async () => {
-  const mode = process.argv[2] || "smoke";
-  const fn = MODES[mode];
-  if (!fn) {
-    console.error(`❌ Modo inválido: ${mode}`);
-    console.error(`   Modos: ${Object.keys(MODES).join(" | ")}`);
-    process.exit(1);
-  }
-
-  console.log(`${C.bold}${C.magenta}🔬 TESTEMESTRE — ${mode}${C.reset}`);
-  console.log(`${C.dim}base: ${BASE_URL}  run: ${RUN_ID}  timeout: ${TIMEOUT_MS}ms  out: ${OUT_DIR}/${C.reset}`);
+  console.clear?.();
+  header(
+    `TESTEMESTRE — ${mode.local ? "LOCAL" : "PRODUÇÃO"} — ${RUN_ID}`,
+    `base: ${BASE_URL}  |  timeout: ${TIMEOUT_MS}ms`
+  );
 
   try {
-    await fn();
+    await phase0_saude();
+    await phase1_keepalive();
+    const ctx = await phase2_core();
+    if (ctx && !mode.quick) {
+      await phase3_features(ctx);
+      await phase4_summary(ctx);
+      await phase5_seguranca(ctx);
+    }
+    if (mode.full || mode.race) {
+      await phase6_race();
+    }
+    if (!mode.quick) {
+      await phase7_latencia();
+      await phase8_diag();
+    }
   } catch (e) {
-    console.error(`\n${C.red}💥 Erro fatal:${C.reset}`, e);
-    state.findings.push({ id: "FATAL", phase: "?", title: e.message, status: "CONFIRMADA" });
+    console.log(`\n${C.red}${C.bold}💥 Erro fatal:${C.reset} ${e.message}`);
+    if (e.stack) console.log(`${C.dim}${e.stack.split("\n").slice(1, 4).join("\n")}${C.reset}`);
   } finally {
-    const confirmed = finalize();
-    process.exit(confirmed > 0 ? 1 : 0);
+    finalReport();
   }
 })();

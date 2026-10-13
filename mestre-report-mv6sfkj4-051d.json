@@ -1,0 +1,131 @@
+{
+  "runId": "mv6sfkj4-051d",
+  "startedAt": "2026-10-13T14:40:15.280Z",
+  "finishedAt": "2026-10-13T14:41:27.754Z",
+  "durationMs": 72471,
+  "baseUrl": "https://luizback-y8qz.vercel.app",
+  "totals": {
+    "requests": 347,
+    "colds": 1,
+    "err5xx": 0,
+    "err4xx": 113
+  },
+  "tests": {
+    "pass": 38,
+    "fail": 0,
+    "warn": 1,
+    "info": 3,
+    "rate": 100
+  },
+  "phases": {
+    "phase0": {
+      "ms": 789,
+      "cold": false,
+      "region": null
+    },
+    "phase3": {
+      "sleepId": "cmv6sfpcq0009jp06ykskg1dy",
+      "recordTypeId": "cmv6sfpwq000bjp062ah8wdxt",
+      "inviteLinkToken": "WtQTnLM_bMkEX7XQdl56Kg"
+    },
+    "phase4": {
+      "sleepCount": 1,
+      "customTypes": 1
+    },
+    "phase6": {
+      "acceptOk": 1,
+      "acceptConflict": 99
+    },
+    "phase7": [
+      {
+        "method": "GET",
+        "path": "/",
+        "min": 203,
+        "avg": 223,
+        "p50": 220,
+        "p95": 308,
+        "max": 308
+      },
+      {
+        "method": "GET",
+        "path": "/auth/me",
+        "min": 237,
+        "avg": 267,
+        "p50": 260,
+        "p95": 372,
+        "max": 372
+      },
+      {
+        "method": "GET",
+        "path": "/couple/me",
+        "min": 241,
+        "avg": 257,
+        "p50": 252,
+        "p95": 290,
+        "max": 290
+      },
+      {
+        "method": "GET",
+        "path": "/dependent",
+        "min": 221,
+        "avg": 249,
+        "p50": 239,
+        "p95": 379,
+        "max": 379
+      },
+      {
+        "method": "GET",
+        "path": "/dependent/cmv6sg1fd000dl206mq6fimnj",
+        "min": 220,
+        "avg": 253,
+        "p50": 233,
+        "p95": 548,
+        "max": 548
+      },
+      {
+        "method": "GET",
+        "path": "/summary?dependentId=cmv6sg1fd000dl206m…",
+        "min": 252,
+        "avg": 335,
+        "p50": 287,
+        "p95": 916,
+        "max": 916
+      },
+      {
+        "method": "GET",
+        "path": "/casal",
+        "min": 221,
+        "avg": 249,
+        "p50": 239,
+        "p95": 333,
+        "max": 333
+      },
+      {
+        "method": "GET",
+        "path": "/record-types",
+        "min": 218,
+        "avg": 333,
+        "p50": 247,
+        "p95": 631,
+        "max": 631
+      },
+      {
+        "method": "GET",
+        "path": "/casal/data?key=mimos",
+        "min": 222,
+        "avg": 299,
+        "p50": 238,
+        "p95": 671,
+        "max": 671
+      }
+    ]
+  },
+  "latency": {
+    "min": 203,
+    "p50": 288,
+    "p95": 2191,
+    "p99": 2232,
+    "max": 4572
+  },
+  "bugs": []
+}
