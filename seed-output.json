@@ -1,0 +1,600 @@
+{
+  "runId": "mv6qlhpf",
+  "startedAt": "2026-10-13T13:48:52.327Z",
+  "baseUrl": "https://luizback-y8qz.vercel.app",
+  "options": {
+    "SEED_COUNT": 3,
+    "SEED_DEPENDENTS": 2,
+    "SEED_SLEEP": true,
+    "SEED_CUSTOM": true,
+    "SEED_INVITE": true
+  },
+  "couples": [
+    {
+      "idx": 1,
+      "error": "POST /auth/register: esperado 201, recebeu 0 — undefined"
+    },
+    {
+      "idx": 2,
+      "owner": {
+        "email": "seed+mv6qlhpf-c2-owner-c822@test.local",
+        "password": "seed-a390a4de",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbXY2cWx4ZmYwMDAxbDYwNm5tdXN5cGVnIiwiaWF0IjoxNzkxODk5MzUyLCJleHAiOjE3OTQ0OTEzNTJ9._xIVLipXXbeFwa44Er8Br-1wS9GdrFuDaJKDCTfU0f0",
+        "id": "cmv6qlxff0001l606nmusypeg"
+      },
+      "partner": {
+        "email": "seed+mv6qlhpf-c2-partner-b13f@test.local",
+        "password": "seed-666103c1",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbXY2cWx5aDQwMDA0bDYwNnJidmlkdHFyIiwiaWF0IjoxNzkxODk5MzU0LCJleHAiOjE3OTQ0OTEzNTR9.XnzEY_BUHHAsGbVTzOkkNzyOnpNxoBjDNhAefdaQnFQ",
+        "id": "cmv6qlyh40004l606rbvidtqr"
+      },
+      "outsider": {
+        "email": "seed+mv6qlhpf-c2-out-2292@test.local",
+        "password": "seed-9a423879",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbXY2cW00bzIwMDBybDYwNmR0emsxZjZkIiwiaWF0IjoxNzkxODk5MzYyLCJleHAiOjE3OTQ0OTEzNjJ9.aCifMGQDPTytEHzy-iKPJvfJLfQ9clmI6jcoVU1NT6s",
+        "id": "cmv6qm4o2000rl606dtzk1f6d"
+      },
+      "coupleId": "cmv6qlxqe0003l606kmow1j8w",
+      "dependents": [
+        {
+          "id": "cmv6qlzqj0008l6067315hv5h",
+          "name": "DEP 2.1 mv6qlhpf",
+          "records": {
+            "pee": "cmv6qm01i000al606pdp11t0q",
+            "poop": "cmv6qm0cb000cl606vt56hlff",
+            "behavior": "cmv6qm0n2000el606nba5c9aq"
+          }
+        },
+        {
+          "id": "cmv6qm1kh000gl606a8j5ixw2",
+          "name": "DEP 2.2 mv6qlhpf",
+          "records": {
+            "pee": "cmv6qm1vx000il6069cj8z0co",
+            "poop": "cmv6qm277000kl6064p8nl9ju",
+            "behavior": "cmv6qm2k2000ml606lddagm49"
+          }
+        }
+      ],
+      "taskId": "cmv6qm3qs000ol60657s0kz1i",
+      "customType": null,
+      "inviteLink": null,
+      "casalDataKey": "mimos"
+    },
+    {
+      "idx": 3,
+      "owner": {
+        "email": "seed+mv6qlhpf-c3-owner-789e@test.local",
+        "password": "seed-f68ae39e",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbXY2cW01b2MwMDB1bDYwNjRjMXFodWRnIiwiaWF0IjoxNzkxODk5MzYzLCJleHAiOjE3OTQ0OTEzNjN9.0VsAQ2gjv1FK1nnLGgtZhYvXmLZGbYKyM4nq70pPnUk",
+        "id": "cmv6qm5oc000ul6064c1qhudg"
+      },
+      "partner": {
+        "email": "seed+mv6qlhpf-c3-partner-a1f9@test.local",
+        "password": "seed-d2aeaa4d",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbXY2cW02bzAwMDB4bDYwNjU0MmVseDI1IiwiaWF0IjoxNzkxODk5MzY0LCJleHAiOjE3OTQ0OTEzNjR9.eryEeAZx4RCf0qBfBgGJm3niSCmBZSoG9ZnonACqMgk",
+        "id": "cmv6qm6o0000xl606542elx25"
+      },
+      "outsider": {
+        "email": "seed+mv6qlhpf-c3-out-0bbc@test.local",
+        "password": "seed-5a80e3b4",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjbXY2cW1mYzIwMDFrbDYwNjNvNW9pN2gwIiwiaWF0IjoxNzkxODk5Mzc1LCJleHAiOjE3OTQ0OTEzNzV9.frXGUR-76w1A-7LbNOBKD566GvXWcFvm2MjhddguKVw",
+        "id": "cmv6qmfc2001kl6063o5oi7h0"
+      },
+      "coupleId": "cmv6qm5yj000wl6062uulw7g6",
+      "dependents": [
+        {
+          "id": "cmv6qm7zo0011l606llfmprep",
+          "name": "DEP 3.1 mv6qlhpf",
+          "records": {
+            "pee": "cmv6qm8a70013l606eakpy81p",
+            "poop": "cmv6qm8l10015l606wq7r45wl",
+            "behavior": "cmv6qm94g0017l606nkbvriz3"
+          }
+        },
+        {
+          "id": "cmv6qmayi0019l606m5yrse62",
+          "name": "DEP 3.2 mv6qlhpf",
+          "records": {
+            "pee": "cmv6qmbbt001bl606jommpqa0",
+            "poop": "cmv6qmbna001dl606u8lsxsa6",
+            "behavior": "cmv6qmbyp001fl606eqmgc0uh"
+          }
+        }
+      ],
+      "taskId": "cmv6qmea2001hl6061khpvy0u",
+      "customType": null,
+      "inviteLink": null,
+      "casalDataKey": "mimos"
+    }
+  ],
+  "finishedAt": "2026-10-13T13:49:38.514Z",
+  "durationMs": 46187,
+  "metrics": [
+    {
+      "label": "warmup",
+      "method": "GET",
+      "path": "/",
+      "status": 200,
+      "ms": 804,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "register",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 0,
+      "ms": 20013,
+      "cold": false,
+      "networkError": "TIMEOUT"
+    },
+    {
+      "label": "register",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 201,
+      "ms": 618,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "couple:create",
+      "method": "POST",
+      "path": "/couple",
+      "status": 201,
+      "ms": 467,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "couple:me",
+      "method": "GET",
+      "path": "/auth/me",
+      "status": 200,
+      "ms": 397,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "register",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 201,
+      "ms": 487,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "invite:create",
+      "method": "POST",
+      "path": "/couple/invite",
+      "status": 201,
+      "ms": 462,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "notif:list",
+      "method": "GET",
+      "path": "/notifications",
+      "status": 200,
+      "ms": 385,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "invite:accept",
+      "method": "POST",
+      "path": "/notifications/cmv6qlysa0006l606fxgdzwd1/accept",
+      "status": 200,
+      "ms": 420,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "dep:create",
+      "method": "POST",
+      "path": "/dependent",
+      "status": 201,
+      "ms": 389,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "pee",
+      "method": "POST",
+      "path": "/pee",
+      "status": 201,
+      "ms": 387,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "poop",
+      "method": "POST",
+      "path": "/poop",
+      "status": 201,
+      "ms": 385,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "behavior",
+      "method": "POST",
+      "path": "/behavior",
+      "status": 201,
+      "ms": 388,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "sleep",
+      "method": "POST",
+      "path": "/sleep",
+      "status": 404,
+      "ms": 353,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "summary",
+      "method": "GET",
+      "path": "/summary",
+      "status": 200,
+      "ms": 458,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "dep:create",
+      "method": "POST",
+      "path": "/dependent",
+      "status": 201,
+      "ms": 390,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "pee",
+      "method": "POST",
+      "path": "/pee",
+      "status": 201,
+      "ms": 432,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "poop",
+      "method": "POST",
+      "path": "/poop",
+      "status": 201,
+      "ms": 388,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "behavior",
+      "method": "POST",
+      "path": "/behavior",
+      "status": 201,
+      "ms": 459,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "sleep",
+      "method": "POST",
+      "path": "/sleep",
+      "status": 404,
+      "ms": 335,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "summary",
+      "method": "GET",
+      "path": "/summary",
+      "status": 200,
+      "ms": 449,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "record-type:create",
+      "method": "POST",
+      "path": "/record-types",
+      "status": 404,
+      "ms": 369,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "task:create",
+      "method": "POST",
+      "path": "/casal",
+      "status": 201,
+      "ms": 386,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "casaldata:put",
+      "method": "PUT",
+      "path": "/casal/data",
+      "status": 200,
+      "ms": 374,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "invite-link:create",
+      "method": "POST",
+      "path": "/couple/invite-link",
+      "status": 404,
+      "ms": 335,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "register",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 201,
+      "ms": 484,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "outsider:couple",
+      "method": "POST",
+      "path": "/couple",
+      "status": 201,
+      "ms": 455,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "idor:dep",
+      "method": "GET",
+      "path": "/dependent/cmv6qlzqj0008l6067315hv5h",
+      "status": 403,
+      "ms": 379,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "register",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 201,
+      "ms": 461,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "couple:create",
+      "method": "POST",
+      "path": "/couple",
+      "status": 201,
+      "ms": 408,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "couple:me",
+      "method": "GET",
+      "path": "/auth/me",
+      "status": 200,
+      "ms": 395,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "register",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 201,
+      "ms": 474,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "invite:create",
+      "method": "POST",
+      "path": "/couple/invite",
+      "status": 201,
+      "ms": 455,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "notif:list",
+      "method": "GET",
+      "path": "/notifications",
+      "status": 200,
+      "ms": 402,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "invite:accept",
+      "method": "POST",
+      "path": "/notifications/cmv6qm6yu000zl606hv3paruq/accept",
+      "status": 200,
+      "ms": 466,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "dep:create",
+      "method": "POST",
+      "path": "/dependent",
+      "status": 201,
+      "ms": 401,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "pee",
+      "method": "POST",
+      "path": "/pee",
+      "status": 201,
+      "ms": 380,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "poop",
+      "method": "POST",
+      "path": "/poop",
+      "status": 201,
+      "ms": 393,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "behavior",
+      "method": "POST",
+      "path": "/behavior",
+      "status": 201,
+      "ms": 788,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "sleep",
+      "method": "POST",
+      "path": "/sleep",
+      "status": 404,
+      "ms": 1184,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "summary",
+      "method": "GET",
+      "path": "/summary",
+      "status": 200,
+      "ms": 706,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "dep:create",
+      "method": "POST",
+      "path": "/dependent",
+      "status": 201,
+      "ms": 392,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "pee",
+      "method": "POST",
+      "path": "/pee",
+      "status": 201,
+      "ms": 479,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "poop",
+      "method": "POST",
+      "path": "/poop",
+      "status": 201,
+      "ms": 416,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "behavior",
+      "method": "POST",
+      "path": "/behavior",
+      "status": 201,
+      "ms": 741,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "sleep",
+      "method": "POST",
+      "path": "/sleep",
+      "status": 404,
+      "ms": 550,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "summary",
+      "method": "GET",
+      "path": "/summary",
+      "status": 200,
+      "ms": 705,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "record-type:create",
+      "method": "POST",
+      "path": "/record-types",
+      "status": 404,
+      "ms": 686,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "task:create",
+      "method": "POST",
+      "path": "/casal",
+      "status": 201,
+      "ms": 729,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "casaldata:put",
+      "method": "PUT",
+      "path": "/casal/data",
+      "status": 200,
+      "ms": 485,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "invite-link:create",
+      "method": "POST",
+      "path": "/couple/invite-link",
+      "status": 404,
+      "ms": 355,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "register",
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 201,
+      "ms": 538,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "outsider:couple",
+      "method": "POST",
+      "path": "/couple",
+      "status": 201,
+      "ms": 752,
+      "cold": false,
+      "networkError": null
+    },
+    {
+      "label": "idor:dep",
+      "method": "GET",
+      "path": "/dependent/cmv6qm7zo0011l606llfmprep",
+      "status": 403,
+      "ms": 765,
+      "cold": false,
+      "networkError": null
+    }
+  ]
+}

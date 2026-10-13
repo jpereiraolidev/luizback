@@ -1,0 +1,295 @@
+{
+  "runId": "mv6nb94x-efa7c7",
+  "startedAt": "2026-10-13T12:16:55.812Z",
+  "baseUrl": "https://luizback-y8qz.vercel.app",
+  "findings": [
+    {
+      "id": "F1-01",
+      "phase": "1",
+      "title": "Fragmentação (indicador x-vercel-id)",
+      "status": "INCONCLUSIVA",
+      "evidence": {
+        "total": 20,
+        "vercelIds": 19
+      },
+      "note": "x-vercel-id é apenas indicador — implementar /__diag/instance para prova.",
+      "fix": "Adicionar endpoint /__diag/instance à API."
+    }
+  ],
+  "metrics": [
+    {
+      "method": "GET",
+      "path": "/",
+      "status": 200,
+      "ms": 569,
+      "vercelId": "gru1::iad1::z5r9m-1791893815151-99ae74c9e6be",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/auth/login",
+      "status": 204,
+      "ms": 361,
+      "vercelId": "gru1::iad1::krzsm-1791893815536-45cb9ff610f4",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__mestre_inexistente__",
+      "status": 404,
+      "ms": 222,
+      "vercelId": "gru1::iad1::npq4g-1791893815748-4db7076546b2",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "POST",
+      "path": "/auth/register",
+      "status": 413,
+      "ms": 2964,
+      "vercelId": "gru1::iad1::m4fpc-1791893816019-a6e3a31f193e",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 210,
+      "vercelId": "gru1::iad1::npq4g-1791893818934-ed1418f60ae5",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 204,
+      "vercelId": "gru1::iad1::tc76n-1791893819147-9c0b5f442403",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 379,
+      "vercelId": "gru1::iad1::6gsrb-1791893819324-e20dfadc5c68",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 397,
+      "vercelId": "gru1::iad1::npq4g-1791893819347-6bee28c51d8f",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 418,
+      "vercelId": "gru1::iad1::85464-1791893819334-7d01c79b4dcf",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 425,
+      "vercelId": "gru1::iad1::c7j9z-1791893819347-6cbc58aac6cd",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 426,
+      "vercelId": "gru1::iad1::5k5bq-1791893819347-019a4ffce1c9",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 451,
+      "vercelId": "gru1::iad1::d55vq-1791893819341-e22f63c5a122",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 441,
+      "vercelId": "gru1::iad1::858xt-1791893819347-3969527ecc29",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 469,
+      "vercelId": "gru1::iad1::mnbhs-1791893819347-e67763bdb783",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 487,
+      "vercelId": "gru1::iad1::vnbrx-1791893819347-c83b5c8ee646",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 473,
+      "vercelId": "gru1::iad1::4bjd4-1791893819351-857459189d93",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 479,
+      "vercelId": "gru1::iad1::vnbrx-1791893819365-0b18cd7b4347",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 515,
+      "vercelId": "gru1::iad1::9k2rs-1791893819365-a5a28d4c399f",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 1037,
+      "vercelId": "gru1::iad1::wngvd-1791893819971-23ac1c97efe5",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 1121,
+      "vercelId": "gru1::iad1::mjmcm-1791893819365-63a284878af1",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 1145,
+      "vercelId": "gru1::iad1::nh4km-1791893819355-f1b8964c98df",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 1141,
+      "vercelId": "gru1::iad1::85c75-1791893819365-5d54a8525a3d",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 1164,
+      "vercelId": "gru1::iad1::5xgq9-1791893819974-6bc71486dba3",
+      "cold": null,
+      "networkError": null
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 0,
+      "ms": 10413,
+      "vercelId": null,
+      "cold": null,
+      "networkError": "fetch failed"
+    },
+    {
+      "method": "GET",
+      "path": "/__diag/instance",
+      "status": 404,
+      "ms": 10451,
+      "vercelId": "gru1::iad1::tlpm7-1791893829365-ce45a471455c",
+      "cold": null,
+      "networkError": null
+    }
+  ],
+  "bugs": [],
+  "endpoints": {
+    "GET /": {
+      "calls": 1,
+      "statuses": {
+        "200": 1
+      },
+      "latencies": []
+    },
+    "OPTIONS /auth/login": {
+      "calls": 1,
+      "statuses": {
+        "204": 1
+      },
+      "latencies": []
+    },
+    "GET /__mestre_inexistente__": {
+      "calls": 1,
+      "statuses": {
+        "404": 1
+      },
+      "latencies": []
+    },
+    "POST /auth/register": {
+      "calls": 1,
+      "statuses": {
+        "413": 1
+      },
+      "latencies": []
+    },
+    "GET /__diag/instance": {
+      "calls": 21,
+      "statuses": {
+        "0": 1,
+        "404": 20
+      },
+      "latencies": []
+    }
+  },
+  "snapshots": {
+    "diagAvailable": false
+  },
+  "finishedAt": "2026-10-13T12:17:10.629Z",
+  "durationMs": 14817,
+  "summary": {
+    "confirmed": 0,
+    "discarded": 0,
+    "inconclusive": 1
+  }
+}

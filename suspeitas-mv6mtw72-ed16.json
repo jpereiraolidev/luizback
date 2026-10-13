@@ -1,0 +1,113 @@
+{
+  "runId": "mv6mtw72-ed16",
+  "baseUrl": "https://luizback-y8qz.vercel.app",
+  "startedAt": "2026-10-13T12:03:25.898Z",
+  "finishedAt": "2026-10-13T12:04:09.920Z",
+  "durationMs": 44022,
+  "findings": [
+    {
+      "id": "S1",
+      "title": "Singleton do Prisma / pool não reaproveitada",
+      "status": "INCONCLUSIVA",
+      "evidence": {
+        "uniqueVercelIds": 20,
+        "avgMs": 1389,
+        "maxMs": 3116
+      },
+      "note": "20 containers distintos responderam — sem falha, mas pool fragmentada.",
+      "fix": "Investigar se DATABASE_URL tem connection_limit=1."
+    },
+    {
+      "id": "S2",
+      "title": "erro",
+      "status": "INCONCLUSIVA",
+      "evidence": {},
+      "note": "register s2 falhou: 0 undefined",
+      "fix": ""
+    },
+    {
+      "id": "S4",
+      "title": "500 intermitente sob carga",
+      "status": "DESCARTADA",
+      "evidence": {
+        "statuses": {
+          "200": 60
+        }
+      },
+      "note": "Nenhum 500 em carga paralela alta.",
+      "fix": ""
+    },
+    {
+      "id": "S6",
+      "title": "Dualidade User.coupleId ↔ Couple.members",
+      "status": "DESCARTADA",
+      "evidence": {},
+      "note": "Os dois lados batem após accept.",
+      "fix": ""
+    },
+    {
+      "id": "S7",
+      "title": "Race em POST /couple/invite",
+      "status": "DESCARTADA",
+      "evidence": {
+        "created": 1,
+        "conflict": 9
+      },
+      "note": "Apenas 1 convite criado — proteção funcionou.",
+      "fix": ""
+    },
+    {
+      "id": "S8",
+      "title": "Race em accept",
+      "status": "CONFIRMADA",
+      "evidence": {
+        "ok": 5,
+        "conflict": 5,
+        "other": []
+      },
+      "note": "5 accepts bem-sucedidos.",
+      "fix": "Usar updateMany({ where: { id, status: PENDING }, data: { status: ACCEPTED } }) e checar count."
+    },
+    {
+      "id": "S9",
+      "title": "Timestamp inválido retorna 500 em vez de 400",
+      "status": "CONFIRMADA",
+      "evidence": {
+        "water": {
+          "status": 500,
+          "body": "{\"error\":\"\\nInvalid `prisma.water.create()` invocation:\\n\\n{\\n  data: {\\n    amount: 100,\\n    reason: null,\\n    timest"
+        },
+        "pee": {
+          "status": 500,
+          "body": "{\"error\":\"\\nInvalid `prisma.pee.create()` invocation:\\n\\n{\\n  data: {\\n    size: \\\"medio\\\",\\n    type: \\\"espontaneo\\\",\\n"
+        },
+        "poop": {
+          "status": 500,
+          "body": "{\"error\":\"\\nInvalid `prisma.poop.create()` invocation:\\n\\n{\\n  data: {\\n    evacuated: true,\\n    consistency: null,\\n  "
+        },
+        "behavior": {
+          "status": 500,
+          "body": "{\"error\":\"\\nInvalid `prisma.behavior.create()` invocation:\\n\\n{\\n  data: {\\n    observed: \\\"x\\\",\\n    rule: null,\\n    a"
+        }
+      },
+      "note": "4/4 endpoints retornaram 500.",
+      "fix": "Validar `new Date(body.timestamp)` com isNaN antes de chamar Prisma. Retornar 400."
+    },
+    {
+      "id": "S10",
+      "title": "DELETE /couple/leave apaga dependentes (cascade)",
+      "status": "INCONCLUSIVA",
+      "evidence": {
+        "before": 200,
+        "after": 403
+      },
+      "note": "",
+      "fix": ""
+    }
+  ],
+  "summary": {
+    "confirmed": 2,
+    "discarded": 3,
+    "inconclusive": 3
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "verifiedAt": "2026-10-13T11:56:21.780Z",
+  "seedRunId": "mv6mgw38-65c1",
+  "rounds": 1,
+  "waitSec": 0,
+  "summary": {
+    "total": 29,
+    "ok": 28,
+    "failures": 1
+  },
+  "failures": [
+    {
+      "label": "owner /auth/me",
+      "ok": false,
+      "detail": "status=500"
+    }
+  ],
+  "detail": [
+    {
+      "round": 1,
+      "at": "2026-10-13T11:56:21.779Z",
+      "results": [
+        {
+          "idx": 1,
+          "verdict": "owner-desapareceu",
+          "log": [
+            {
+              "label": "owner /auth/me",
+              "ok": false,
+              "detail": "status=500"
+            }
+          ]
+        },
+        {
+          "idx": 2,
+          "verdict": "OK",
+          "log": [
+            {
+              "label": "owner /auth/me",
+              "ok": true,
+              "detail": "status=200"
+            },
+            {
+              "label": "owner.coupleId correto",
+              "ok": true,
+              "detail": "esperado=cmv6mh59k000zjk06hg9d6c2x got=cmv6mh59k000zjk06hg9d6c2x"
+            },
+            {
+              "label": "partner /auth/me",
+              "ok": true,
+              "detail": "status=200"
+            },
+            {
+              "label": "partner.coupleId correto",
+              "ok": true,
+              "detail": "esperado=cmv6mh59k000zjk06hg9d6c2x got=cmv6mh59k000zjk06hg9d6c2x"
+            },
+            {
+              "label": "GET /couple/me",
+              "ok": true,
+              "detail": "status=200"
+            },
+            {
+              "label": "casal tem owner + partner",
+              "ok": true,
+              "detail": "membros=2"
+            },
+            {
+              "label": "GET /dependent",
+              "ok": true,
+              "detail": "status=200"
+            },
+            {
+              "label": "dep cmv6mh6sk0014jk06tr3764fe presente",
+              "ok": true
+            },
+            {
+              "label": "dep cmv6mh83e001ejk062pbobnz1 presente",
+              "ok": true
+            },
+            {
+              "label": "summary cmv6mh6sk0014jk06tr3764fe",
+              "ok": true,
+              "detail": "w=1 p=1 po=1 b=1"
+            },
+            {
+              "label": "summary cmv6mh83e001ejk062pbobnz1",
+              "ok": true,
+              "detail": "w=1 p=1 po=1 b=1"
+            },
+            {
+              "label": "task cmv6mh9fv001ojk06fp9s5510 presente",
+              "ok": true
+            },
+            {
+              "label": "casalData[mimos]",
+              "ok": true,
+              "detail": "value={\"seededBy\":\"mv6mgw38-65c1\",\"coupleIdx\":2,\"at\":\"2026-10-13T11:53:37.931Z\"}"
+            },
+            {
+              "label": "outsider ainda bloqueado (403/404)",
+              "ok": true,
+              "detail": "status=403"
+            }
+          ]
+        },
+        {
+          "idx": 3,
+          "verdict": "OK",
+          "log": [
+            {
+              "label": "owner /auth/me",
+              "ok": true,
+              "detail": "status=200"
+            },
+            {
+              "label": "owner.coupleId correto",
+              "ok": true,
+              "detail": "esperado=cmv6mhb25001wjk06o27zlc42 got=cmv6mhb25001wjk06o27zlc42"
+            },
+            {
+              "label": "partner /auth/me",
+              "ok": true,
+              "detail": "status=200"
+            },
+            {
+              "label": "partner.coupleId correto",
+              "ok": true,
+              "detail": "esperado=cmv6mhb25001wjk06o27zlc42 got=cmv6mhb25001wjk06o27zlc42"
+            },
+            {
+              "label": "GET /couple/me",
+              "ok": true,
+              "detail": "status=200"
+            },
+            {
+              "label": "casal tem owner + partner",
+              "ok": true,
+              "detail": "membros=2"
+            },
+            {
+              "label": "GET /dependent",
+              "ok": true,
+              "detail": "status=200"
+            },
+            {
+              "label": "dep cmv6mhcko0021jk06s8elqz0j presente",
+              "ok": true
+            },
+            {
+              "label": "dep cmv6mhe6z002bjk06j5yvwd5g presente",
+              "ok": true
+            },
+            {
+              "label": "summary cmv6mhcko0021jk06s8elqz0j",
+              "ok": true,
+              "detail": "w=1 p=1 po=1 b=1"
+            },
+            {
+              "label": "summary cmv6mhe6z002bjk06j5yvwd5g",
+              "ok": true,
+              "detail": "w=1 p=1 po=1 b=1"
+            },
+            {
+              "label": "task cmv6mhfia002ljk0624ytjrlb presente",
+              "ok": true
+            },
+            {
+              "label": "casalData[mimos]",
+              "ok": true,
+              "detail": "value={\"seededBy\":\"mv6mgw38-65c1\",\"coupleIdx\":3,\"at\":\"2026-10-13T11:53:45.804Z\"}"
+            },
+            {
+              "label": "outsider ainda bloqueado (403/404)",
+              "ok": true,
+              "detail": "status=403"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

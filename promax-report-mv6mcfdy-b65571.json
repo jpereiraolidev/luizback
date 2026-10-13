@@ -1,0 +1,46 @@
+{
+  "runId": "mv6mcfdy-b65571",
+  "startedAt": "2026-10-13T11:49:50.951Z",
+  "finishedAt": "2026-10-13T11:49:55.586Z",
+  "baseUrl": "https://luizback-y8qz.vercel.app",
+  "env": "vercel",
+  "totals": {
+    "tests": 5,
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "successRate": 100
+  },
+  "durationMs": 4635,
+  "bugs": [],
+  "endpoints": {
+    "GET /": {
+      "calls": 2,
+      "statuses": {
+        "200": 2
+      }
+    },
+    "GET /__promax_nao_existe__": {
+      "calls": 1,
+      "statuses": {
+        "404": 1
+      }
+    },
+    "POST /auth/register": {
+      "calls": 1,
+      "statuses": {
+        "413": 1
+      }
+    },
+    "OPTIONS /auth/login": {
+      "calls": 1,
+      "statuses": {
+        "204": 1
+      }
+    }
+  },
+  "coldStarts": 1,
+  "vercelRateLimited": 0,
+  "persistence": null,
+  "recommendations": []
+}
