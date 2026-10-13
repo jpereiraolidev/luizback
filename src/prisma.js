@@ -15,6 +15,7 @@
 //     o socket travado e força o pooler a entregar um novo
 //   - warmupDb(): SELECT 1 para acordar antes de operações
 //     críticas
+//   - keepAlive(): usa safeQuery → retry + reconnect
 //
 // Erros que NÃO fazem retry (falham na hora):
 //   P2002 (unique violation), P2025 (record not found),
@@ -43,9 +44,9 @@ const RETRYABLE_CODES = new Set([
 
 // Códigos do Postgres que indicam problema de CONEXÃO
 const RETRYABLE_PG = new Set([
-  "08000", "08003", "08006", "08001", // connection_exception family
-  "53300",                            // too_many_connections
-  "57P01", "57P02", "57P03",          // admin_shutdown / crash_shutdown / cannot_connect_now
+  "08000", "08003", "08006", "08001",
+  "53300",
+  "57P01", "57P02", "57P03",
 ]);
 
 function isRetryable(err) {
@@ -53,9 +54,9 @@ function isRetryable(err) {
   if (RETRYABLE_CODES.has(err.code)) return true;
   if (RETRYABLE_PG.has(err?.meta?.code)) return true;
   if (RETRYABLE_PG.has(err?.code)) return true;
-  // Alguns erros de rede vêm como TypeError com "fetch failed"
   if (err.name === "PrismaClientInitializationError") return true;
   if (/ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/.test(err.message || "")) return true;
+  if (err.message === "KEEPALIVE_TIMEOUT") return true;
   return false;
 }
 
@@ -89,8 +90,6 @@ function backoffMs(attempt) {
 }
 
 // ---------- ANTI-ZUMBI ----------
-// Fecha e reabre a conexão. Isso mata sockets travados no pooler.
-// Depois re-instrumenta o client (o $on sobrevive, mas por segurança).
 let reconnecting = false;
 async function reconnect(reason) {
   if (reconnecting) return;
@@ -116,12 +115,6 @@ async function reconnect(reason) {
 }
 
 // ---------- SAFE QUERY ----------
-// Uso:
-//   const users = await safeQuery(() => prisma.user.findMany({...}));
-//   const user  = await safeQuery((tx) => tx.user.findUnique({...}), { label: "getUser" });
-//
-// Se fn aceita 1 arg, recebe o próprio prisma (para permitir $transaction).
-// Se fn aceita 0 args, é chamada direto.
 export async function safeQuery(fn, { label = "query", attempts = RETRY.MAX_ATTEMPTS } = {}) {
   let lastErr = null;
 
@@ -136,7 +129,6 @@ export async function safeQuery(fn, { label = "query", attempts = RETRY.MAX_ATTE
       lastErr = err;
 
       if (!isRetryable(err)) {
-        // Erro de negócio → deixa subir imediatamente
         throw err;
       }
 
@@ -159,9 +151,7 @@ export async function safeQuery(fn, { label = "query", attempts = RETRY.MAX_ATTE
         message: err.message?.slice(0, 150),
       });
 
-      // A MÁGICA: descarta a conexão antes do retry
       await reconnect(`retry-${label}-attempt-${attempt}`);
-
       await sleep(delay);
     }
   }
@@ -170,7 +160,6 @@ export async function safeQuery(fn, { label = "query", attempts = RETRY.MAX_ATTE
 }
 
 // ---------- WARMUP ----------
-// SELECT 1 rápido. Use antes de operações críticas ou em cron.
 export async function warmupDb() {
   const t0 = Date.now();
   try {
@@ -189,9 +178,7 @@ export async function warmupDb() {
   }
 }
 
-// ---------- WRAPPER $TRANSACTION ----------
-// Transações com retry. Se a transação falhar por causa de rede,
-// refaz do zero (com a conexão nova).
+// ---------- SAFE TRANSACTION ----------
 export async function safeTransaction(fn, options = {}) {
   const { label = "transaction", ...txOpts } = options;
   return safeQuery(
@@ -200,17 +187,22 @@ export async function safeTransaction(fn, options = {}) {
   );
 }
 
-// ---------- KEEPALIVE ----------
-// Usado pela rota /__health/db. Faz o SELECT 1 com timeout curto.
+// ============================================================
+// KEEPALIVE (com retry + reconnect)
+// ============================================================
+// Usa safeQuery → se a 1ª tentativa pegar a conexão zumbi, o
+// safeQuery faz $disconnect + $connect e a 2ª tentativa pega
+// a conexão nova (que já acorda o banco).
+//
+// Sem timeout externo. Confia no connect_timeout do Prisma
+// + retry do safeQuery.
 export async function keepAlive() {
   const t0 = Date.now();
   try {
-    await Promise.race([
-      prisma.$queryRaw`SELECT 1`,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("KEEPALIVE_TIMEOUT")), 5000)
-      ),
-    ]);
+    await safeQuery(
+      () => prisma.$queryRaw`SELECT 1`,
+      { label: "keepAlive", attempts: 2 }
+    );
     return {
       ok: true,
       latencyMs: Date.now() - t0,
